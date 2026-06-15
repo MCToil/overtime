@@ -143,6 +143,21 @@
   .week-box .wval   { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .week-box .wval span { font-size: 11px; font-weight: 400; color: var(--text-dim); }
   .week-box.current { border: 1px solid var(--accent); }
+  .week-box { cursor: pointer; transition: background .15s; }
+  .week-box:hover { background: #2a2f47; }
+  .week-box.selected { background: #2a2f47; border-color: var(--accent-light); }
+
+  .week-detail {
+    margin-top: 12px;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+    display: none;
+  }
+  .week-detail.open { display: block; }
+  .week-detail-title { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+  .week-detail table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .week-detail td { padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .week-detail tr:last-child td { border-bottom: none; }
 
   /* ── Input ── */
   .tab-bar { display: flex; gap: 6px; margin-bottom: 14px; }
@@ -305,6 +320,7 @@
 <div class="card">
   <div class="card-title">週別</div>
   <div class="weeks-grid" id="weeksGrid"></div>
+  <div class="week-detail" id="weekDetail"></div>
 </div>
 
 <!-- Annual -->
@@ -552,6 +568,16 @@ function fmtMin(min) {
 document.getElementById('directDate').value = todayStr();
 document.getElementById('pickerDate').value = todayStr();
 
+// Date auto-confirm: blur and focus next field
+document.getElementById('directDate').addEventListener('change', function() {
+  this.blur();
+  document.getElementById('directTime').focus();
+});
+document.getElementById('pickerDate').addEventListener('change', function() {
+  this.blur();
+  document.getElementById('pickerStart').focus();
+});
+
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach((b, i) =>
     b.classList.toggle('active', (i===0 && tab==='direct') || (i===1 && tab==='picker')));
@@ -686,6 +712,40 @@ function render() {
   const weeks = getWeekRanges(period.start, period.end);
   const weeksGrid = document.getElementById('weeksGrid');
   weeksGrid.innerHTML = '';
+  let selectedWeekKey = null;
+
+  function renderWeekDetail(ws, we, label, recs) {
+    const detail = document.getElementById('weekDetail');
+    if (detail._key === label) {
+      detail.className = 'week-detail';
+      detail.innerHTML = '';
+      detail._key = null;
+      document.querySelectorAll('.week-box').forEach(b => b.classList.remove('selected'));
+      return;
+    }
+    detail._key = label;
+    detail.className = 'week-detail open';
+    const weekRecs = recs.filter(r => r.date >= ws && r.date <= we).reverse();
+    if (!weekRecs.length) {
+      detail.innerHTML = `<div class="week-detail-title">${label}　記録なし</div>`;
+      return;
+    }
+    const rows = weekRecs.map(r => {
+      const isHol = isHolidayDay(r.date);
+      const hBadge = isHol ? '<span class="hbadge">休</span>' : (r.holiday > 0 ? `<span class="hbadge">深夜 ${fmtMin(r.holiday)}</span>` : '');
+      const memoHtml = r.memo ? `<div class="memo-text" title="${escHtml(r.memo)}">📝 ${escHtml(r.memo)}</div>` : '';
+      return `<tr>
+        <td>${r.date.replace(/-/g,'/')}${hBadge}</td>
+        <td><strong>${fmtMin(r.minutes)}</strong></td>
+        <td><span style="color:var(--text-dim)">${r.start}〜${r.end}</span>${memoHtml}</td>
+      </tr>`;
+    }).join('');
+    detail.innerHTML = `
+      <div class="week-detail-title">${label}</div>
+      <table><tbody>${rows}</tbody></table>
+    `;
+  }
+
   weeks.forEach((w, i) => {
     const ws = w.start.toISOString().slice(0,10);
     const we = w.end.toISOString().slice(0,10);
@@ -693,6 +753,7 @@ function render() {
     const wMin  = wRecs.reduce((s,r) => s+r.minutes, 0);
     const wHol  = wRecs.reduce((s,r) => s+(r.holiday||0), 0);
     const isCurrent = todayStr() >= ws && todayStr() <= we;
+    const label = `第${i+1}週 (${fmtDate(w.start).slice(5)} - ${fmtDate(w.end).slice(5)})`;
     const box = document.createElement('div');
     box.className = 'week-box' + (isCurrent ? ' current' : '');
     box.innerHTML = `
@@ -701,6 +762,12 @@ function render() {
       <div class="wval">${Math.floor(wMin/60)}<span>h</span>${wMin%60>0?`${String(wMin%60).padStart(2,'0')}<span>m</span>`:''}</div>
       ${wHol>0 ? `<div style="font-size:10px;color:#90a4ae;margin-top:3px">休日 ${fmtMin(wHol)}</div>` : ''}
     `;
+    box.addEventListener('click', () => {
+      document.querySelectorAll('.week-box').forEach(b => b.classList.remove('selected'));
+      const detail = document.getElementById('weekDetail');
+      if (detail._key !== label) box.classList.add('selected');
+      renderWeekDetail(ws, we, label, inPeriod);
+    });
     weeksGrid.appendChild(box);
   });
 
