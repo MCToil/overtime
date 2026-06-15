@@ -186,6 +186,8 @@
 
   .form-group { display: flex; flex-direction: column; gap: 5px; flex: 1; }
   .form-group label { font-size: 12px; color: var(--text-dim); }
+  .fg-date { flex: 0 0 auto; }
+  .fg-date input { font-size: 13px; padding: 10px 8px; width: auto; }
 
   .form-group input,
   .form-group select {
@@ -347,7 +349,7 @@
 
   <div class="input-panel active" id="panelDirect">
     <div class="form-row">
-      <div class="form-group">
+      <div class="form-group fg-date">
         <label>日付</label>
         <input type="date" id="directDate">
       </div>
@@ -371,7 +373,7 @@
 
   <div class="input-panel" id="panelPicker">
     <div class="form-row">
-      <div class="form-group">
+      <div class="form-group fg-date">
         <label>日付</label>
         <input type="date" id="pickerDate">
       </div>
