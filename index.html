@@ -514,14 +514,10 @@
         <select id="tsTag"></select>
       </div>
     </div>
-    <div class="ts-pending" id="tsPending">
-      <span style="color:var(--text-dim);font-size:11px">開始打刻</span><br>
-      <span id="tsPendingText"></span>
-    </div>
     <div class="ts-btn-row">
-      <button class="btn" id="tsBtn" onclick="timekeep()" style="flex:1">打刻（開始）</button>
-      <button class="btn btn-danger" id="tsCancelBtn" onclick="cancelPending()" style="display:none">取消</button>
+      <button class="btn btn-timekeep" onclick="timekeep()" style="flex:1">打刻</button>
     </div>
+    <div id="stampLog" style="margin-top:12px;max-height:200px;overflow-y:auto"></div>
     <button class="btn-link" onclick="toggleTagEditor()">▸ タグを編集</button>
     <div class="tag-editor" id="tagEditor" style="display:none">
       <div class="tag-chips" id="tagChips"></div>
@@ -788,8 +784,8 @@ function addDirect() {
 }
 
 // ─── Tag management ─────────────────────────────────────────────────────────
-const TAGS_KEY     = 'overtime_tags_v1';
-const PENDING_KEY  = 'overtime_pending_v1';
+const TAGS_KEY    = 'overtime_tags_v1';
+const STAMPS_KEY  = 'overtime_stamps_v1';
 const DEFAULT_TAGS = ['残業', '休日出勤', '深夜作業', '会議', 'その他'];
 
 function loadTags() {
@@ -798,14 +794,11 @@ function loadTags() {
 }
 function saveTags(tags) { localStorage.setItem(TAGS_KEY, JSON.stringify(tags)); }
 
-function loadPending() {
-  try { return JSON.parse(localStorage.getItem(PENDING_KEY)) || null; }
-  catch { return null; }
+function loadStamps() {
+  try { return JSON.parse(localStorage.getItem(STAMPS_KEY)) || []; }
+  catch { return []; }
 }
-function savePending(p) {
-  if (p) localStorage.setItem(PENDING_KEY, JSON.stringify(p));
-  else localStorage.removeItem(PENDING_KEY);
-}
+function saveStamps(s) { localStorage.setItem(STAMPS_KEY, JSON.stringify(s)); }
 
 function renderTagSelect() {
   const sel = document.getElementById('tsTag');
@@ -848,48 +841,35 @@ function toggleTagEditor() {
 }
 
 // ─── Timekeep ────────────────────────────────────────────────────────────────
-function renderTimestampState() {
-  const pending = loadPending();
-  const btn     = document.getElementById('tsBtn');
-  const pendEl  = document.getElementById('tsPending');
-  const cancelB = document.getElementById('tsCancelBtn');
-  if (!btn) return;
-  if (pending) {
-    btn.textContent = '打刻（終了）';
-    btn.style.background = 'var(--ok)';
-    document.getElementById('tsPendingText').textContent =
-      `${pending.date.replace(/-/g,'/')} ${pending.start}　[${pending.tag}]`;
-    pendEl.classList.add('active');
-    cancelB.style.display = '';
-  } else {
-    btn.textContent = '打刻（開始）';
-    btn.style.background = '';
-    pendEl.classList.remove('active');
-    cancelB.style.display = 'none';
-  }
-}
-
 function timekeep() {
-  const now = new Date();
-  const h   = String(now.getHours()).padStart(2,'0');
-  const m   = String(now.getMinutes()).padStart(2,'0');
-  const tag = document.getElementById('tsTag').value;
-  const pending = loadPending();
-  if (!pending) {
-    savePending({ date: todayStr(), start: `${h}:${m}`, tag });
-  } else {
-    const end = `${h}:${m}`;
-    const [sh, sm] = pending.start.split(':').map(Number);
-    let diff = (now.getHours()*60 + now.getMinutes()) - (sh*60+sm);
-    if (diff <= 0) diff += 1440;
-    if (diff > 720) { alert('12時間を超える記録はできません'); return; }
-    addRecord(pending.date, pending.start, end, diff, pending.tag);
-    savePending(null);
-  }
-  renderTimestampState();
+  const now  = new Date();
+  const h    = String(now.getHours()).padStart(2,'0');
+  const m    = String(now.getMinutes()).padStart(2,'0');
+  const tag  = document.getElementById('tsTag').value;
+  const stamps = loadStamps();
+  stamps.unshift({ id: Date.now(), date: todayStr(), time: `${h}:${m}`, tag });
+  saveStamps(stamps);
+  renderStampLog();
 }
 
-function cancelPending() { savePending(null); renderTimestampState(); }
+function renderStampLog() {
+  const el = document.getElementById('stampLog');
+  if (!el) return;
+  const stamps = loadStamps();
+  if (!stamps.length) { el.innerHTML = ''; return; }
+  el.innerHTML = stamps.map(s =>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span>${s.date.replace(/-/g,'/')} ${s.time}　<span style="color:var(--text-dim)">[${escHtml(s.tag)}]</span></span>
+      <button class="btn btn-sm btn-danger" onclick="deleteStamp(${s.id})">削除</button>
+    </div>`
+  ).join('');
+}
+
+function deleteStamp(id) {
+  const stamps = loadStamps().filter(s => s.id !== id);
+  saveStamps(stamps);
+  renderStampLog();
+}
 
 function startClock() {
   function tick() {
@@ -1184,7 +1164,7 @@ function importData(e) {
 
 render();
 renderTagSelect();
-renderTimestampState();
+renderStampLog();
 startClock();
 </script>
 </body>
