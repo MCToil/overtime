@@ -350,6 +350,27 @@
   <div class="week-detail" id="weekDetail"></div>
 </div>
 
+<!-- Log -->
+<div class="card">
+  <div class="card-title">記録一覧</div>
+  <table class="log-table">
+    <thead>
+      <tr>
+        <th>日付</th>
+        <th>時間</th>
+        <th>開始〜終了 / メモ</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="logBody"></tbody>
+  </table>
+  <div class="export-row">
+    <button class="btn btn-sm" onclick="exportData()">エクスポート</button>
+    <button class="btn btn-sm" onclick="document.getElementById('importFile').click()">インポート</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+  </div>
+</div>
+
 <!-- Annual -->
 <div class="card">
   <div class="card-title">年間集計 <span id="annualPeriodLabel" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim)"></span></div>
@@ -428,26 +449,6 @@
   </div>
 </div>
 
-<!-- Log -->
-<div class="card">
-  <div class="card-title">記録一覧</div>
-  <table class="log-table">
-    <thead>
-      <tr>
-        <th>日付</th>
-        <th>時間</th>
-        <th>開始〜終了 / メモ</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody id="logBody"></tbody>
-  </table>
-  <div class="export-row">
-    <button class="btn btn-sm" onclick="exportData()">エクスポート</button>
-    <button class="btn btn-sm" onclick="document.getElementById('importFile').click()">インポート</button>
-    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
-  </div>
-</div>
 
 <script>
 // ─── Japan public holidays 2024-2026 ───────────────────────────────────────
