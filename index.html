@@ -498,7 +498,7 @@ function calcHolidayMinutes(dateStr, startStr, endStr) {
     const minInDay  = m % 1440;
     const d = new Date(baseDate);
     d.setDate(d.getDate() + dayOffset);
-    const ds = d.toISOString().slice(0, 10);
+    const ds = dateStr(d);
 
     if (isHolidayDay(ds)) {
       holiday++;
@@ -548,6 +548,11 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// ローカル日付をYYYY-MM-DD文字列に変換（toISOStringはUTCのため日本ではずれる）
+function dateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 function getWeekRanges(periodStart, periodEnd) {
   // Find the Monday on or before periodStart
   const dow = periodStart.getDay(); // 0=Sun
@@ -589,8 +594,8 @@ function getAnnualMonths(annualStart) {
     const s = new Date(annualStart); s.setMonth(s.getMonth() + i);
     const e = new Date(s); e.setMonth(e.getMonth() + 1); e.setDate(10);
     return {
-      startStr: s.toISOString().slice(0, 10),
-      endStr:   e.toISOString().slice(0, 10),
+      startStr: dateStr(s),
+      endStr:   dateStr(e),
       label:    `${s.getMonth() + 1}月`,
     };
   });
@@ -731,8 +736,8 @@ function render() {
   const period = getPeriod(today);
   const records = load();
 
-  const startStr = period.start.toISOString().slice(0,10);
-  const endStr   = period.end.toISOString().slice(0,10);
+  const startStr = dateStr(period.start);
+  const endStr   = dateStr(period.end);
   const inPeriod = records.filter(r => r.date >= startStr && r.date <= endStr);
 
   const totalMin   = inPeriod.reduce((s,r) => s + r.minutes, 0);
@@ -823,8 +828,8 @@ function render() {
   }
 
   weeks.forEach((w, i) => {
-    const ws = w.start.toISOString().slice(0,10);
-    const we = w.end.toISOString().slice(0,10);
+    const ws = dateStr(w.start);
+    const we = dateStr(w.end);
     const wRecs = inPeriod.filter(r => r.date >= ws && r.date <= we);
     const wMin  = wRecs.reduce((s,r) => s+r.minutes, 0);
     const wHol  = wRecs.reduce((s,r) => s+(r.holiday||0), 0);
@@ -850,8 +855,8 @@ function render() {
   // Annual
   const annual = getAnnualPeriod(today);
   const annualMonths = getAnnualMonths(annual.start);
-  const annualStartStr = annual.start.toISOString().slice(0,10);
-  const annualEndStr   = annual.end.toISOString().slice(0,10);
+  const annualStartStr = dateStr(annual.start);
+  const annualEndStr   = dateStr(annual.end);
   const inAnnual = records.filter(r => r.date >= annualStartStr && r.date <= annualEndStr);
   const annualMin = inAnnual.reduce((s,r) => s + r.minutes, 0);
 
