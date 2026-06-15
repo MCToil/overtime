@@ -178,9 +178,10 @@
   .input-panel { display: none; }
   .input-panel.active { display: block; }
 
-  .form-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .form-row { display: flex; gap: 10px; align-items: flex-end; }
+  .form-row + .form-row { margin-top: 10px; }
 
-  .form-group { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 100px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; flex: 1; }
   .form-group label { font-size: 12px; color: var(--text-dim); }
 
   .form-group input,
@@ -343,7 +344,7 @@
 
   <div class="input-panel active" id="panelDirect">
     <div class="form-row">
-      <div class="form-group" style="flex:0 0 130px">
+      <div class="form-group">
         <label>日付</label>
         <input type="date" id="directDate">
       </div>
@@ -352,30 +353,34 @@
         <input type="text" id="directTime" placeholder="1700-2045" maxlength="9">
         <div class="time-hint">例: 1700-2045 → 3h45m</div>
       </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <div class="memo-label">メモ（任意）</div>
+        <input type="text" id="directMemo" placeholder="作業内容など">
+      </div>
       <div class="form-group" style="flex:0 0 auto">
         <label>&nbsp;</label>
         <button class="btn" onclick="addDirect()">追加</button>
       </div>
-    </div>
-    <div class="memo-row">
-      <div class="memo-label">メモ（任意）</div>
-      <input type="text" id="directMemo" placeholder="作業内容など">
     </div>
     <div class="error-msg" id="directError"></div>
   </div>
 
   <div class="input-panel" id="panelPicker">
     <div class="form-row">
-      <div class="form-group" style="flex:0 0 130px">
+      <div class="form-group">
         <label>日付</label>
         <input type="date" id="pickerDate">
       </div>
+    </div>
+    <div class="form-row">
       <div class="form-group">
-        <label>開始時刻</label>
+        <label>開始</label>
         <input type="time" id="pickerStart" value="17:00">
       </div>
       <div class="form-group">
-        <label>終了時刻</label>
+        <label>終了</label>
         <input type="time" id="pickerEnd" value="19:00">
       </div>
       <div class="form-group" style="flex:0 0 auto">
@@ -383,9 +388,11 @@
         <button class="btn" onclick="addPicker()">追加</button>
       </div>
     </div>
-    <div class="memo-row">
-      <div class="memo-label">メモ（任意）</div>
-      <input type="text" id="pickerMemo" placeholder="作業内容など">
+    <div class="form-row">
+      <div class="form-group">
+        <div class="memo-label">メモ（任意）</div>
+        <input type="text" id="pickerMemo" placeholder="作業内容など">
+      </div>
     </div>
     <div class="error-msg" id="pickerError"></div>
   </div>
