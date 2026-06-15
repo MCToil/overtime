@@ -599,7 +599,7 @@ const LATE_START = 22 * 60;       // 1320
 const LATE_END   = 24 * 60;       // 1440
 const EARLY_END  = 8 * 60 + 30;   // 510
 
-function calcHolidayMinutes(dateStr, startStr, endStr) {
+function calcHolidayMinutes(dStr, startStr, endStr) {
   const [sh, sm] = startStr.split(':').map(Number);
   const [eh, em] = endStr.split(':').map(Number);
   let startAbs = sh * 60 + sm;
@@ -609,7 +609,7 @@ function calcHolidayMinutes(dateStr, startStr, endStr) {
   let regular = 0, holiday = 0;
 
   // Iterate per minute (max ~720 iterations — fast enough)
-  const baseDate = new Date(dateStr + 'T00:00:00');
+  const baseDate = new Date(dStr + 'T00:00:00');
   for (let m = startAbs; m < endAbs; m++) {
     const dayOffset = Math.floor(m / 1440);
     const minInDay  = m % 1440;
