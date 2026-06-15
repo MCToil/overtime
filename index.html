@@ -101,7 +101,10 @@
   .warning-banner.danger { display: block; background: rgba(229,57,53,.15);  border: 1px solid var(--danger); color: var(--danger); }
 
   /* ── Weeks ── */
-  .weeks-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 10px; }
+  .weeks-grid { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+  .weeks-grid::-webkit-scrollbar { height: 3px; }
+  .weeks-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .week-box { flex: 1 0 0; min-width: 60px; }
 
   /* ── Annual ── */
   .annual-header {
@@ -349,9 +352,8 @@
         <input type="date" id="directDate">
       </div>
       <div class="form-group">
-        <label>時刻 (HHMM-HHMM)</label>
+        <label>時刻 (HHMM-HHMM) <span class="time-hint">例: 1700-2045</span></label>
         <input type="text" id="directTime" placeholder="1700-2045" maxlength="9">
-        <div class="time-hint">例: 1700-2045 → 3h45m</div>
       </div>
     </div>
     <div class="form-row">
