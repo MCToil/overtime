@@ -418,6 +418,16 @@
   </div>
 </div>
 
+<!-- Annual -->
+<div class="card">
+  <div class="card-title">年間集計 <span id="annualPeriodLabel" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim)"></span></div>
+  <div class="annual-header">
+    <div class="annual-total" id="annualTotal">0<span>h</span></div>
+    <div class="annual-sub" id="annualSub"></div>
+  </div>
+  <div class="months-grid" id="monthsGrid"></div>
+</div>
+
 <!-- Log -->
 <div class="card">
   <div class="card-title">記録一覧</div>
@@ -437,16 +447,6 @@
     <button class="btn btn-sm" onclick="document.getElementById('importFile').click()">インポート</button>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
   </div>
-</div>
-
-<!-- Annual -->
-<div class="card">
-  <div class="card-title">年間集計 <span id="annualPeriodLabel" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim)"></span></div>
-  <div class="annual-header">
-    <div class="annual-total" id="annualTotal">0<span>h</span></div>
-    <div class="annual-sub" id="annualSub"></div>
-  </div>
-  <div class="months-grid" id="monthsGrid"></div>
 </div>
 
 
