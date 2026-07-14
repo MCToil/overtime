@@ -433,6 +433,10 @@
   .export-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 
   .error-msg { color: var(--danger); font-size: 12px; margin-top: 6px; min-height: 16px; }
+  .log-week-head td { background: var(--bg); font-weight: 700; font-size: 13px; padding: 10px 8px; cursor: pointer; border-top: 2px solid var(--border); user-select: none; -webkit-user-select: none; }
+  .log-week-head:active td { opacity: .7; }
+  .log-week-arrow { display: inline-block; width: 14px; color: var(--text-dim); }
+  .log-week-sum { float: right; color: var(--text-dim); font-weight: 400; font-size: 12px; }
 
   @media (max-width: 520px) {
     .weeks-grid { grid-template-columns: repeat(2, 1fr); }
@@ -572,7 +576,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v7</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v8</div>
 
 
 <script>
@@ -1102,47 +1106,73 @@ function render() {
     monthsGrid.appendChild(box);
   });
 
-  // Log
+  // Log — grouped by week, collapsible
   const logBody = document.getElementById('logBody');
   logBody.innerHTML = '';
-  const sorted = [...inPeriod].reverse();
-  if (!sorted.length) {
+  if (!inPeriod.length) {
     logBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-dim);padding:20px">まだ記録がありません</td></tr>';
     return;
   }
-  sorted.forEach(r => {
-    const hol = r.holiday || 0;
-    const isAllHoliday = isHolidayDay(r.date);
-    const tr = document.createElement('tr');
 
-    let dayLabel = r.date.replace(/-/g,'/');
-    if (isAllHoliday) dayLabel += '<span class="hbadge">休</span>';
+  const ts2 = todayStr();
+  [...weeks].reverse().forEach((w, ri) => {
+    const wi = weeks.length - 1 - ri;
+    const ws = dateStr(w.start);
+    const we = dateStr(w.end);
+    const wRecs = inPeriod.filter(r => r.date >= ws && r.date <= we).reverse();
+    if (!wRecs.length) return;
 
-    let timeHtml = `<strong>${fmtMin(r.minutes)}</strong>`;
-    if (hol > 0 && !isAllHoliday) {
-      // Partial holiday (late night on weekday)
-      timeHtml += `<span class="hbadge">深夜 ${fmtMin(hol)}</span>`;
-    } else if (hol > 0 && isAllHoliday) {
-      // Already shown by day label
-    }
+    const wMin = wRecs.reduce((s,r) => s + r.minutes, 0);
+    const key  = ws;
+    const isCurrent = ts2 >= ws && ts2 <= we;
+    if (!(key in logWeekOpen)) logWeekOpen[key] = isCurrent;
+    const open = logWeekOpen[key];
 
-    const memoHtml = r.memo ? `<div class="memo-text" title="${escHtml(r.memo)}">📝 ${escHtml(r.memo)}</div>` : '';
+    const head = document.createElement('tr');
+    head.className = 'log-week-head';
+    head.innerHTML = `<td colspan="4">
+      <span class="log-week-arrow">${open ? '▾' : '▸'}</span>
+      第${wi+1}週 (${fmtDate(w.start).slice(5)} - ${fmtDate(w.end).slice(5)})
+      <span class="log-week-sum">${fmtMin(wMin)} / ${wRecs.length}件</span>
+    </td>`;
+    head.onclick = () => { logWeekOpen[key] = !logWeekOpen[key]; render(); };
+    logBody.appendChild(head);
 
-    tr.innerHTML = `
-      <td>${dayLabel}</td>
-      <td>${timeHtml}</td>
-      <td>
-        <span style="color:var(--text-dim)">${r.start} 〜 ${r.end}</span>
-        ${memoHtml}
-      </td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-sm btn-edit" onclick="startEdit(${r.id})" style="margin-bottom:4px">編集</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteRecord(${r.id})">削除</button>
-      </td>
-    `;
-    logBody.appendChild(tr);
+    if (!open) return;
+
+    wRecs.forEach(r => {
+      const hol = r.holiday || 0;
+      const isAllHoliday = isHolidayDay(r.date);
+      const tr = document.createElement('tr');
+
+      let dayLabel = r.date.replace(/-/g,'/');
+      if (isAllHoliday) dayLabel += '<span class="hbadge">休</span>';
+
+      let timeHtml = `<strong>${fmtMin(r.minutes)}</strong>`;
+      if (hol > 0 && !isAllHoliday) {
+        timeHtml += `<span class="hbadge">深夜 ${fmtMin(hol)}</span>`;
+      }
+
+      const memoHtml = r.memo ? `<div class="memo-text" title="${escHtml(r.memo)}">📝 ${escHtml(r.memo)}</div>` : '';
+
+      tr.innerHTML = `
+        <td>${dayLabel}</td>
+        <td>${timeHtml}</td>
+        <td>
+          <span style="color:var(--text-dim)">${r.start} 〜 ${r.end}</span>
+          ${memoHtml}
+        </td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-sm btn-edit" onclick="startEdit(${r.id})" style="margin-bottom:4px">編集</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteRecord(${r.id})">削除</button>
+        </td>
+      `;
+      logBody.appendChild(tr);
+    });
   });
 }
+
+const logWeekOpen = {};
 
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1191,7 +1221,7 @@ render();
 renderTagSelect();
 renderStampLog();
 startClock();
-document.getElementById('versionFooter').textContent = `v7 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v8 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
