@@ -469,6 +469,8 @@
     <span id="remainLabel">残り 80h</span>
     <span>上限 80h</span>
   </div>
+  <button class="btn btn-sm" onclick="verifyTotal()" style="margin-top:10px;background:var(--card);color:var(--text-dim);border:1px solid var(--border)">🔍 検算</button>
+  <div id="verifyResult" style="display:none;margin-top:8px;padding:10px;border-radius:8px;font-size:12px;line-height:1.7"></div>
 </div>
 
 <!-- Weekly -->
@@ -577,7 +579,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v9</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v10</div>
 
 
 <script>
@@ -669,6 +671,68 @@ function navPeriod(delta) {
   viewOffset += delta;
   if (viewOffset < 0) viewOffset = 0;
   render();
+}
+
+// ─── 検算: 表示用ロジックとは独立した計算経路 ─────────────────────────────
+// localStorage を直接読み、保存済み minutes を信用せず start/end から再計算。
+// 期間境界も getPeriod/Date 演算を使わず年月の整数演算のみで求める。
+function verifyTotal() {
+  const box = document.getElementById('verifyResult');
+  const show = (ok, html) => {
+    box.style.display = 'block';
+    box.style.background = ok ? 'rgba(76,175,80,.12)' : 'rgba(244,67,54,.12)';
+    box.style.border = `1px solid ${ok ? 'var(--ok)' : 'var(--danger)'}`;
+    box.innerHTML = html;
+  };
+
+  let raw;
+  try { raw = JSON.parse(localStorage.getItem('overtime_v2') || '[]'); }
+  catch { show(false, '❌ 保存データの読み込みに失敗しました'); return; }
+  if (!Array.isArray(raw)) { show(false, '❌ 保存データが配列ではありません'); return; }
+
+  // 期間境界: 整数演算のみ
+  const now = new Date();
+  let y = now.getFullYear(), m = now.getMonth() + 1;
+  if (now.getDate() < 11) { m -= 1; }
+  m -= viewOffset;
+  while (m <= 0) { m += 12; y -= 1; }
+  const pad = n => (n < 10 ? '0' : '') + n;
+  const startKey = `${y}-${pad(m)}-11`;
+  let ey = y, em = m + 1;
+  if (em === 13) { em = 1; ey += 1; }
+  const endKey = `${ey}-${pad(em)}-10`;
+
+  let total = 0, count = 0, noneDays = 0;
+  const problems = [];
+  for (const r of raw) {
+    if (typeof r.date !== 'string' || r.date < startKey || r.date > endKey) continue;
+    if (r.none) { noneDays++; continue; }
+    count++;
+    const ms = /^(\d{1,2}):(\d{2})$/.exec(r.start || '');
+    const me = /^(\d{1,2}):(\d{2})$/.exec(r.end || '');
+    if (!ms || !me) { problems.push(`${r.date}: 時刻の形式が不正 (${r.start}〜${r.end})`); continue; }
+    let dur = (+me[1]) * 60 + (+me[2]) - ((+ms[1]) * 60 + (+ms[2]));
+    if (dur <= 0) dur += 1440;
+    total += dur;
+    if (dur !== r.minutes) problems.push(`${r.date}: 保存値 ${r.minutes}分 ≠ 再計算 ${dur}分`);
+  }
+
+  // 表示側の合計(保存済み minutes の単純合算)と突き合わせ
+  const displayed = raw.filter(r =>
+    typeof r.date === 'string' && r.date >= startKey && r.date <= endKey && !r.none
+  ).reduce((s, r) => s + (r.minutes || 0), 0);
+
+  const fmt = min => `${Math.floor(min / 60)}時間${min % 60 > 0 ? String(min % 60).padStart(2,'0') + '分' : ''}`;
+  const ok = problems.length === 0 && total === displayed;
+
+  show(ok, `
+    ${ok ? '✅ <strong>検算一致</strong>' : '❌ <strong>不一致があります</strong>'}<br>
+    対象期間: ${startKey.replace(/-/g,'/')} 〜 ${endKey.replace(/-/g,'/')}<br>
+    対象記録: ${count}件${noneDays ? `（ほか残業なし ${noneDays}日）` : ''}<br>
+    開始・終了時刻からの再計算: <strong>${fmt(total)}</strong><br>
+    画面表示に使われる合計: <strong>${fmt(displayed)}</strong>
+    ${problems.length ? '<br>' + problems.map(p => '⚠️ ' + p).join('<br>') : ''}
+  `);
 }
 
 function getPeriod(today = new Date()) {
@@ -1256,7 +1320,7 @@ render();
 renderTagSelect();
 renderStampLog();
 startClock();
-document.getElementById('versionFooter').textContent = `v9 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v10 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
