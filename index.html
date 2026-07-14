@@ -40,7 +40,10 @@
     margin-bottom: 20px;
   }
 
-  .period-label { font-size: 13px; color: var(--text-dim); }
+  .period-nav { display: flex; align-items: center; gap: 8px; }
+  .period-label { font-size: 13px; color: var(--text-dim); white-space: nowrap; }
+  .period-nav-btn { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text-dim); font-size: 12px; padding: 4px 8px; cursor: pointer; }
+  .period-nav-btn:disabled { opacity: 0.3; cursor: default; }
 
   .card {
     background: var(--surface);
@@ -441,7 +444,11 @@
 
 <div class="header">
   <h1>残業管理</h1>
-  <div class="period-label" id="periodLabel">集計期間: ...</div>
+  <div class="period-nav">
+    <button class="period-nav-btn" onclick="navPeriod(1)">&#8592; 前月</button>
+    <span class="period-label" id="periodLabel">...</span>
+    <button class="period-nav-btn" id="periodNavNext" onclick="navPeriod(-1)">次月 &#8594;</button>
+  </div>
 </div>
 
 <div class="warning-banner" id="warningBanner"></div>
@@ -643,6 +650,20 @@ function load() {
 function save(records) { localStorage.setItem(STORE_KEY, JSON.stringify(records)); }
 
 // ─── Period helpers ─────────────────────────────────────────────────────────
+let viewOffset = 0; // 0=current, 1=1 period ago, 2=2 periods ago...
+
+function getPeriodByOffset(offset) {
+  const ref = new Date();
+  ref.setMonth(ref.getMonth() - offset);
+  return getPeriod(ref);
+}
+
+function navPeriod(delta) {
+  viewOffset += delta;
+  if (viewOffset < 0) viewOffset = 0;
+  render();
+}
+
 function getPeriod(today = new Date()) {
   const y = today.getFullYear(), m = today.getMonth(), d = today.getDate();
   let sY, sM, eY, eM;
@@ -924,8 +945,7 @@ function cancelEdit() {
 
 // ─── Render ─────────────────────────────────────────────────────────────────
 function render() {
-  const today = new Date();
-  const period = getPeriod(today);
+  const period  = getPeriodByOffset(viewOffset);
   const records = load();
 
   const startStr = dateStr(period.start);
@@ -936,9 +956,12 @@ function render() {
   const holidayMin = inPeriod.reduce((s,r) => s + (r.holiday || 0), 0);
   const regularMin = totalMin - holidayMin;
 
-  // Period label
+  // Period label + nav state
+  const suffix = viewOffset === 0 ? '（今期）' : '';
   document.getElementById('periodLabel').textContent =
-    `${fmtDate(period.start)} 〜 ${fmtDate(period.end)}`;
+    `${fmtDate(period.start)} 〜 ${fmtDate(period.end)}${suffix}`;
+  const nextBtn = document.getElementById('periodNavNext');
+  if (nextBtn) nextBtn.disabled = viewOffset === 0;
 
   // Big number
   const dH = Math.floor(totalMin/60), dM = totalMin%60;
