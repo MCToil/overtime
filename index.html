@@ -1068,7 +1068,7 @@ function render() {
   });
 
   // Annual
-  const annual = getAnnualPeriod(today);
+  const annual = getAnnualPeriod(period.start);
   const annualMonths = getAnnualMonths(annual.start);
   const annualStartStr = dateStr(annual.start);
   const annualEndStr   = dateStr(annual.end);
