@@ -572,6 +572,8 @@
   </div>
 </div>
 
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v7</div>
+
 
 <script>
 // ─── Japan public holidays 2024-2026 ───────────────────────────────────────
@@ -1189,6 +1191,7 @@ render();
 renderTagSelect();
 renderStampLog();
 startClock();
+document.getElementById('versionFooter').textContent = `v7 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
