@@ -514,6 +514,7 @@
       </div>
     </div>
     <div class="error-msg" id="directError"></div>
+    <button class="btn btn-sm" onclick="addNoOvertime()" style="background:var(--card);color:var(--text-dim);border:1px solid var(--border)">✓ この日は残業なし</button>
   </div>
 
   <div class="input-panel" id="panelTimestamp">
@@ -576,7 +577,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v8</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v9</div>
 
 
 <script>
@@ -810,6 +811,22 @@ function addDirect() {
   document.getElementById('directMemo').value = '';
 }
 
+function addNoOvertime() {
+  const errEl = document.getElementById('directError');
+  errEl.textContent = '';
+  const date = document.getElementById('directDate').value;
+  if (!date) { errEl.textContent = '日付を選択してください'; return; }
+  const records = load();
+  if (records.some(r => r.date === date)) {
+    errEl.textContent = 'この日には既に記録があります';
+    return;
+  }
+  records.push({ id: Date.now(), date, none: true, start: '', end: '', minutes: 0, regular: 0, holiday: 0, memo: '' });
+  records.sort((a,b) => a.date.localeCompare(b.date));
+  save(records);
+  render();
+}
+
 // ─── Tag management ─────────────────────────────────────────────────────────
 const TAGS_KEY    = 'overtime_tags_v1';
 const STAMPS_KEY  = 'overtime_stamps_v1';
@@ -912,7 +929,7 @@ function startClock() {
 
 function addRecord(date, start, end, minutes, memo) {
   const { regular, holiday } = calcHolidayMinutes(date, start, end);
-  const records = load();
+  const records = load().filter(r => !(r.none && r.date === date));
   records.push({ id: Date.now(), date, start, end, minutes, regular, holiday, memo: memo || '' });
   records.sort((a,b) => a.date.localeCompare(b.date));
   save(records);
@@ -1035,6 +1052,12 @@ function render() {
     const rows = weekRecs.map(r => {
       const isHol = isHolidayDay(r.date);
       const hBadge = isHol ? '<span class="hbadge">休</span>' : (r.holiday > 0 ? `<span class="hbadge">深夜 ${fmtMin(r.holiday)}</span>` : '');
+      if (r.none) {
+        return `<tr>
+          <td>${r.date.replace(/-/g,'/')}${hBadge}</td>
+          <td colspan="2"><span style="color:var(--ok)">✓ 残業なし</span></td>
+        </tr>`;
+      }
       const memoHtml = r.memo ? `<div class="memo-text" title="${escHtml(r.memo)}">📝 ${escHtml(r.memo)}</div>` : '';
       return `<tr>
         <td>${r.date.replace(/-/g,'/')}${hBadge}</td>
@@ -1133,7 +1156,7 @@ function render() {
     head.innerHTML = `<td colspan="4">
       <span class="log-week-arrow">${open ? '▾' : '▸'}</span>
       第${wi+1}週 (${fmtDate(w.start).slice(5)} - ${fmtDate(w.end).slice(5)})
-      <span class="log-week-sum">${fmtMin(wMin)} / ${wRecs.length}件</span>
+      <span class="log-week-sum">${fmtMin(wMin)} / ${wRecs.filter(r=>!r.none).length}件</span>
     </td>`;
     head.onclick = () => { logWeekOpen[key] = !logWeekOpen[key]; render(); };
     logBody.appendChild(head);
@@ -1147,6 +1170,18 @@ function render() {
 
       let dayLabel = r.date.replace(/-/g,'/');
       if (isAllHoliday) dayLabel += '<span class="hbadge">休</span>';
+
+      if (r.none) {
+        tr.innerHTML = `
+          <td>${dayLabel}</td>
+          <td colspan="2"><span style="color:var(--ok)">✓ 残業なし</span></td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-sm btn-danger" onclick="deleteRecord(${r.id})">削除</button>
+          </td>
+        `;
+        logBody.appendChild(tr);
+        return;
+      }
 
       let timeHtml = `<strong>${fmtMin(r.minutes)}</strong>`;
       if (hol > 0 && !isAllHoliday) {
@@ -1221,7 +1256,7 @@ render();
 renderTagSelect();
 renderStampLog();
 startClock();
-document.getElementById('versionFooter').textContent = `v8 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v9 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
