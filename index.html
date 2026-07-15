@@ -593,7 +593,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v12</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v13</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -1133,6 +1133,21 @@ function render() {
   const holidayMin = counted.holiday;
   const regularMin = totalMin - holidayMin;
 
+  // 日ごとの 9/Y 差引情報(一覧表示用)
+  const dayAgg = {};
+  inPeriod.forEach(r => {
+    if (r.none) return;
+    const b = dayAgg[r.date] || (dayAgg[r.date] = { plus: 0, minus: 0 });
+    if (isExcludedTag(r.dtag)) b.minus += r.minutes; else b.plus += r.minutes;
+  });
+  // 記録1件ぶんの差引後カウント時間(同日複数記録は按分)
+  function countedShare(r) {
+    const b = dayAgg[r.date];
+    if (!b || b.minus === 0 || b.plus === 0) return r.minutes;
+    const dayCounted = Math.max(0, b.plus - b.minus);
+    return Math.round(r.minutes * dayCounted / b.plus);
+  }
+
   // Period label + nav state
   const suffix = viewOffset === 0 ? '（今期）' : '';
   document.getElementById('periodLabel').textContent =
@@ -1214,9 +1229,18 @@ function render() {
         </tr>`;
       }
       const memoHtml = r.memo ? `<div class="memo-text" title="${escHtml(r.memo)}">📝 ${escHtml(r.memo)}</div>` : '';
+      let minHtml = `<strong>${fmtMin(r.minutes)}</strong>`;
+      if (isExcludedTag(r.dtag)) {
+        minHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span><br><span style="color:var(--text-dim);font-size:10px">対象外</span>`;
+      } else {
+        const share = countedShare(r);
+        if (share !== r.minutes) {
+          minHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span> <strong>→ ${fmtMin(share)}</strong><br><span style="color:var(--text-dim);font-size:10px">9/Y差引</span>`;
+        }
+      }
       return `<tr>
         <td>${r.date.replace(/-/g,'/')}${hBadge}</td>
-        <td><strong>${fmtMin(r.minutes)}</strong></td>
+        <td>${minHtml}</td>
         <td><span style="color:var(--text-dim)">${r.start}〜${r.end}</span>${memoHtml}</td>
       </tr>`;
     }).join('');
@@ -1342,8 +1366,13 @@ function render() {
       let timeHtml = `<strong>${fmtMin(r.minutes)}</strong>`;
       if (isExcludedTag(r.dtag)) {
         timeHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span><br><span style="color:var(--text-dim);font-size:10px">対象外</span>`;
-      } else if (hol > 0 && !isAllHoliday) {
-        timeHtml += `<span class="hbadge">深夜 ${fmtMin(hol)}</span>`;
+      } else {
+        const share = countedShare(r);
+        if (share !== r.minutes) {
+          timeHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span> <strong>→ ${fmtMin(share)}</strong><br><span style="color:var(--text-dim);font-size:10px">9/Y差引</span>`;
+        } else if (hol > 0 && !isAllHoliday) {
+          timeHtml += `<span class="hbadge">深夜 ${fmtMin(hol)}</span>`;
+        }
       }
 
       const memoHtml = r.memo ? `<div class="memo-text" title="${escHtml(r.memo)}">📝 ${escHtml(r.memo)}</div>` : '';
@@ -1415,7 +1444,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v12 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v13 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
