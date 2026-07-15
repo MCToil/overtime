@@ -433,6 +433,18 @@
   .export-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 
   .error-msg { color: var(--danger); font-size: 12px; margin-top: 6px; min-height: 16px; }
+  .dtag-label { font-size: 12px; color: var(--text-dim); margin-top: 12px; margin-bottom: 6px; }
+  .dtag-help-btn { background: none; border: none; cursor: pointer; font-size: 13px; padding: 0 4px; }
+  .dtag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .dtag-btn { min-width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-weight: 700; font-size: 14px; cursor: pointer; padding: 0 8px; }
+  .dtag-btn.selected { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .dtag-badge { display: inline-block; background: var(--ok); color: #fff; font-size: 11px; font-weight: 700; border-radius: 5px; padding: 1px 6px; margin-left: 5px; vertical-align: middle; }
+  #dtagHelpOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100; align-items: center; justify-content: center; padding: 20px; }
+  .dtag-help-box { background: var(--card); border-radius: 12px; padding: 20px; max-width: 340px; width: 100%; max-height: 80vh; overflow-y: auto; }
+  .dtag-help-title { font-weight: 700; margin-bottom: 10px; }
+  .dtag-help-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .dtag-help-table td { padding: 6px 4px; border-bottom: 1px solid var(--border); }
+  .dtag-help-table td:first-child { font-weight: 700; width: 32px; }
   .log-week-head td { background: var(--bg); font-weight: 700; font-size: 13px; padding: 10px 8px; cursor: pointer; border-top: 2px solid var(--border); user-select: none; -webkit-user-select: none; }
   .log-week-head:active td { opacity: .7; }
   .log-week-arrow { display: inline-block; width: 14px; color: var(--text-dim); }
@@ -515,6 +527,8 @@
         <button class="btn btn-danger btn-sm" onclick="cancelEdit()">キャンセル</button>
       </div>
     </div>
+    <div class="dtag-label">タグ（任意） <button class="dtag-help-btn" onclick="showDtagHelp()">❓</button></div>
+    <div class="dtag-row" id="dtagRow"></div>
     <div class="error-msg" id="directError"></div>
     <button class="btn btn-sm" onclick="addNoOvertime()" style="background:var(--card);color:var(--text-dim);border:1px solid var(--border)">✓ この日は残業なし</button>
   </div>
@@ -579,7 +593,27 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v10</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v11</div>
+
+<div id="dtagHelpOverlay" onclick="this.style.display='none'">
+  <div class="dtag-help-box" onclick="event.stopPropagation()">
+    <div class="dtag-help-title">タグの意味</div>
+    <table class="dtag-help-table">
+      <tr><td>1</td><td>外来診療</td></tr>
+      <tr><td>2</td><td>入院診療</td></tr>
+      <tr><td>3</td><td>診療準備</td></tr>
+      <tr><td>4</td><td>手術・処置</td></tr>
+      <tr><td>5</td><td>書類</td></tr>
+      <tr><td>6</td><td>会議</td></tr>
+      <tr><td>7</td><td>指定日　日当直</td></tr>
+      <tr><td>8</td><td>非指定日　日当直超勤</td></tr>
+      <tr><td>9</td><td>法人外業務</td></tr>
+      <tr><td>10</td><td>28h連続勤務後の勤務時間内労務</td></tr>
+      <tr><td>Y</td><td>有給</td></tr>
+    </table>
+    <button class="btn btn-sm" onclick="document.getElementById('dtagHelpOverlay').style.display='none'" style="margin-top:12px;width:100%">閉じる</button>
+  </div>
+</div>
 
 
 <script>
@@ -862,17 +896,39 @@ function addDirect() {
     const records = load();
     const idx = records.findIndex(r => r.id === editingId);
     if (idx !== -1) {
-      records[idx] = { ...records[idx], date, start: parsed.start, end: parsed.end, minutes: parsed.minutes, regular, holiday, memo: memo || '' };
+      records[idx] = { ...records[idx], date, start: parsed.start, end: parsed.end, minutes: parsed.minutes, regular, holiday, memo: memo || '', dtag: selectedDtag };
       records.sort((a,b) => a.date.localeCompare(b.date));
       save(records);
     }
     cancelEdit();
     render();
   } else {
-    addRecord(date, parsed.start, parsed.end, parsed.minutes, memo);
+    addRecord(date, parsed.start, parsed.end, parsed.minutes, memo, selectedDtag);
   }
   document.getElementById('directTime').value = '';
   document.getElementById('directMemo').value = '';
+  selectedDtag = null;
+  renderDtagRow();
+}
+
+// ─── 数字タグ (1-10, Y) ──────────────────────────────────────────────────────
+const DTAG_VALUES = ['1','2','3','4','5','6','7','8','9','10','Y'];
+let selectedDtag = null;
+
+function renderDtagRow() {
+  const row = document.getElementById('dtagRow');
+  row.innerHTML = DTAG_VALUES.map(v =>
+    `<button type="button" class="dtag-btn${selectedDtag === v ? ' selected' : ''}" onclick="pickDtag('${v}')">${v}</button>`
+  ).join('');
+}
+
+function pickDtag(v) {
+  selectedDtag = (selectedDtag === v) ? null : v;
+  renderDtagRow();
+}
+
+function showDtagHelp() {
+  document.getElementById('dtagHelpOverlay').style.display = 'flex';
 }
 
 function addNoOvertime() {
@@ -991,10 +1047,10 @@ function startClock() {
   setInterval(tick, 1000);
 }
 
-function addRecord(date, start, end, minutes, memo) {
+function addRecord(date, start, end, minutes, memo, dtag) {
   const { regular, holiday } = calcHolidayMinutes(date, start, end);
   const records = load().filter(r => !(r.none && r.date === date));
-  records.push({ id: Date.now(), date, start, end, minutes, regular, holiday, memo: memo || '' });
+  records.push({ id: Date.now(), date, start, end, minutes, regular, holiday, memo: memo || '', dtag: dtag || null });
   records.sort((a,b) => a.date.localeCompare(b.date));
   save(records);
   render();
@@ -1016,6 +1072,8 @@ function startEdit(id) {
   document.getElementById('directDate').value = r.date;
   document.getElementById('directTime').value = r.start.replace(':','') + '-' + r.end.replace(':','');
   document.getElementById('directMemo').value = r.memo || '';
+  selectedDtag = r.dtag || null;
+  renderDtagRow();
   document.getElementById('directAddBtn').textContent = '更新';
   document.getElementById('editBanner').classList.add('active');
   document.getElementById('directCancelWrap').style.display = '';
@@ -1024,6 +1082,8 @@ function startEdit(id) {
 
 function cancelEdit() {
   editingId = null;
+  selectedDtag = null;
+  renderDtagRow();
   document.getElementById('directAddBtn').textContent = '追加';
   document.getElementById('editBanner').classList.remove('active');
   document.getElementById('directCancelWrap').style.display = 'none';
@@ -1115,7 +1175,8 @@ function render() {
     }
     const rows = weekRecs.map(r => {
       const isHol = isHolidayDay(r.date);
-      const hBadge = isHol ? '<span class="hbadge">休</span>' : (r.holiday > 0 ? `<span class="hbadge">深夜 ${fmtMin(r.holiday)}</span>` : '');
+      let hBadge = isHol ? '<span class="hbadge">休</span>' : (r.holiday > 0 ? `<span class="hbadge">深夜 ${fmtMin(r.holiday)}</span>` : '');
+      if (r.dtag) hBadge += `<span class="dtag-badge">${escHtml(String(r.dtag))}</span>`;
       if (r.none) {
         return `<tr>
           <td>${r.date.replace(/-/g,'/')}${hBadge}</td>
@@ -1234,6 +1295,7 @@ function render() {
 
       let dayLabel = r.date.replace(/-/g,'/');
       if (isAllHoliday) dayLabel += '<span class="hbadge">休</span>';
+      if (r.dtag) dayLabel += `<span class="dtag-badge">${escHtml(String(r.dtag))}</span>`;
 
       if (r.none) {
         tr.innerHTML = `
@@ -1319,8 +1381,9 @@ function importData(e) {
 render();
 renderTagSelect();
 renderStampLog();
+renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v10 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v11 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
