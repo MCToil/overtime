@@ -593,7 +593,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v11</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v12</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -692,6 +692,29 @@ function load() {
 
 function save(records) { localStorage.setItem(STORE_KEY, JSON.stringify(records)); }
 
+// ─── 残業カウント ────────────────────────────────────────────────────────────
+// タグ 9(法人外業務)・Y(有給) は残業に数えない。さらに同じ日の他の残業から
+// その時間分を差し引く。ただし日ごとに 0 分未満にはしない(他の日へ波及させない)。
+function isExcludedTag(t) { return t === '9' || t === 'Y'; }
+
+function countedMinutes(recs) {
+  const byDate = {};
+  for (const r of recs) {
+    if (r.none) continue;
+    const b = byDate[r.date] || (byDate[r.date] = { plus: 0, minus: 0, holiday: 0 });
+    if (isExcludedTag(r.dtag)) { b.minus += r.minutes; }
+    else { b.plus += r.minutes; b.holiday += (r.holiday || 0); }
+  }
+  let total = 0, holiday = 0;
+  for (const b of Object.values(byDate)) {
+    const day = Math.max(0, b.plus - b.minus);
+    total += day;
+    // 休日・深夜の内訳は、その日のカウント対象分に比例して按分
+    holiday += b.plus > 0 ? Math.round(b.holiday * day / b.plus) : 0;
+  }
+  return { total, holiday };
+}
+
 // ─── Period helpers ─────────────────────────────────────────────────────────
 let viewOffset = 0; // 0=current, 1=1 period ago, 2=2 periods ago...
 
@@ -736,8 +759,10 @@ function verifyTotal() {
   if (em === 13) { em = 1; ey += 1; }
   const endKey = `${ey}-${pad(em)}-10`;
 
-  let total = 0, count = 0, noneDays = 0;
+  // タグ9・Yは残業対象外。同日の他の残業から差し引き、日ごとに0分未満にはしない。
+  let count = 0, noneDays = 0, excluded = 0;
   const problems = [];
+  const days = {};
   for (const r of raw) {
     if (typeof r.date !== 'string' || r.date < startKey || r.date > endKey) continue;
     if (r.none) { noneDays++; continue; }
@@ -747,14 +772,18 @@ function verifyTotal() {
     if (!ms || !me) { problems.push(`${r.date}: 時刻の形式が不正 (${r.start}〜${r.end})`); continue; }
     let dur = (+me[1]) * 60 + (+me[2]) - ((+ms[1]) * 60 + (+ms[2]));
     if (dur <= 0) dur += 1440;
-    total += dur;
     if (dur !== r.minutes) problems.push(`${r.date}: 保存値 ${r.minutes}分 ≠ 再計算 ${dur}分`);
+    const d = days[r.date] || (days[r.date] = { plus: 0, minus: 0, sPlus: 0, sMinus: 0 });
+    const ex = (r.dtag === '9' || r.dtag === 'Y');
+    if (ex) { excluded++; d.minus += dur; d.sMinus += (r.minutes || 0); }
+    else    { d.plus  += dur; d.sPlus  += (r.minutes || 0); }
   }
 
-  // 表示側の合計(保存済み minutes の単純合算)と突き合わせ
-  const displayed = raw.filter(r =>
-    typeof r.date === 'string' && r.date >= startKey && r.date <= endKey && !r.none
-  ).reduce((s, r) => s + (r.minutes || 0), 0);
+  let total = 0, displayed = 0;
+  for (const d of Object.values(days)) {
+    total     += Math.max(0, d.plus  - d.minus);
+    displayed += Math.max(0, d.sPlus - d.sMinus);
+  }
 
   const fmt = min => `${Math.floor(min / 60)}時間${min % 60 > 0 ? String(min % 60).padStart(2,'0') + '分' : ''}`;
   const ok = problems.length === 0 && total === displayed;
@@ -762,7 +791,7 @@ function verifyTotal() {
   show(ok, `
     ${ok ? '✅ <strong>検算一致</strong>' : '❌ <strong>不一致があります</strong>'}<br>
     対象期間: ${startKey.replace(/-/g,'/')} 〜 ${endKey.replace(/-/g,'/')}<br>
-    対象記録: ${count}件${noneDays ? `（ほか残業なし ${noneDays}日）` : ''}<br>
+    対象記録: ${count}件${excluded ? `（うち対象外タグ9/Y ${excluded}件）` : ''}${noneDays ? `（ほか残業なし ${noneDays}日）` : ''}<br>
     開始・終了時刻からの再計算: <strong>${fmt(total)}</strong><br>
     画面表示に使われる合計: <strong>${fmt(displayed)}</strong>
     ${problems.length ? '<br>' + problems.map(p => '⚠️ ' + p).join('<br>') : ''}
@@ -1099,8 +1128,9 @@ function render() {
   const endStr   = dateStr(period.end);
   const inPeriod = records.filter(r => r.date >= startStr && r.date <= endStr);
 
-  const totalMin   = inPeriod.reduce((s,r) => s + r.minutes, 0);
-  const holidayMin = inPeriod.reduce((s,r) => s + (r.holiday || 0), 0);
+  const counted    = countedMinutes(inPeriod);
+  const totalMin   = counted.total;
+  const holidayMin = counted.holiday;
   const regularMin = totalMin - holidayMin;
 
   // Period label + nav state
@@ -1200,8 +1230,9 @@ function render() {
     const ws = dateStr(w.start);
     const we = dateStr(w.end);
     const wRecs = inPeriod.filter(r => r.date >= ws && r.date <= we);
-    const wMin  = wRecs.reduce((s,r) => s+r.minutes, 0);
-    const wHol  = wRecs.reduce((s,r) => s+(r.holiday||0), 0);
+    const wCounted = countedMinutes(wRecs);
+    const wMin  = wCounted.total;
+    const wHol  = wCounted.holiday;
     const isCurrent = todayStr() >= ws && todayStr() <= we;
     const label = `第${i+1}週 (${fmtDate(w.start).slice(5)} - ${fmtDate(w.end).slice(5)})`;
     const box = document.createElement('div');
@@ -1227,7 +1258,7 @@ function render() {
   const annualStartStr = dateStr(annual.start);
   const annualEndStr   = dateStr(annual.end);
   const inAnnual = records.filter(r => r.date >= annualStartStr && r.date <= annualEndStr);
-  const annualMin = inAnnual.reduce((s,r) => s + r.minutes, 0);
+  const annualMin = countedMinutes(inAnnual).total;
 
   document.getElementById('annualPeriodLabel').textContent =
     `${annual.startYear}年7月 〜 ${annual.startYear + 1}年6月`;
@@ -1241,8 +1272,7 @@ function render() {
   monthsGrid.innerHTML = '';
   const ts = todayStr();
   annualMonths.forEach(mo => {
-    const mMin = inAnnual.filter(r => r.date >= mo.startStr && r.date <= mo.endStr)
-                         .reduce((s,r) => s + r.minutes, 0);
+    const mMin = countedMinutes(inAnnual.filter(r => r.date >= mo.startStr && r.date <= mo.endStr)).total;
     const isCur    = ts >= mo.startStr && ts <= mo.endStr;
     const isFuture = ts < mo.startStr;
     const box = document.createElement('div');
@@ -1270,7 +1300,7 @@ function render() {
     const wRecs = inPeriod.filter(r => r.date >= ws && r.date <= we).reverse();
     if (!wRecs.length) return;
 
-    const wMin = wRecs.reduce((s,r) => s + r.minutes, 0);
+    const wMin = countedMinutes(wRecs).total;
     const key  = ws;
     const isCurrent = ts2 >= ws && ts2 <= we;
     if (!(key in logWeekOpen)) logWeekOpen[key] = isCurrent;
@@ -1310,7 +1340,9 @@ function render() {
       }
 
       let timeHtml = `<strong>${fmtMin(r.minutes)}</strong>`;
-      if (hol > 0 && !isAllHoliday) {
+      if (isExcludedTag(r.dtag)) {
+        timeHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span><br><span style="color:var(--text-dim);font-size:10px">対象外</span>`;
+      } else if (hol > 0 && !isAllHoliday) {
         timeHtml += `<span class="hbadge">深夜 ${fmtMin(hol)}</span>`;
       }
 
@@ -1383,7 +1415,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v11 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v12 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
