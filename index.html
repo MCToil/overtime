@@ -510,7 +510,7 @@
       </div>
       <div class="form-group fg-time">
         <label>時刻</label>
-        <input type="text" id="directTime" placeholder="1700-2045" maxlength="9">
+        <input type="text" id="directTime" placeholder="18002000" maxlength="11">
       </div>
       <div class="form-group" style="flex:0 0 auto">
         <label>&nbsp;</label>
@@ -593,7 +593,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v13</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v14</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -895,6 +895,9 @@ function switchTab(tab) {
 // ─── Parse ──────────────────────────────────────────────────────────────────
 function parseDirectTime(str) {
   str = str.trim().replace(/\s/g,'');
+  // ハイフンなし8桁 (18002000) も受け付ける
+  const bare = str.match(/^(\d{4})(\d{4})(\+1)?$/);
+  if (bare) str = `${bare[1]}-${bare[2]}${bare[3] || ''}`;
   const m = str.match(/^(\d{2}):?(\d{2})-(\d{2}):?(\d{2})(\+1)?$/);
   if (!m) return null;
   const sh = parseInt(m[1]), sm = parseInt(m[2]);
@@ -919,7 +922,7 @@ function addDirect() {
   const parsed = parseDirectTime(document.getElementById('directTime').value);
   const memo   = document.getElementById('directMemo').value.trim();
   if (!date)   { errEl.textContent = '日付を選択してください'; return; }
-  if (!parsed) { errEl.textContent = '形式が正しくありません（例: 1700-2045）'; return; }
+  if (!parsed) { errEl.textContent = '形式が正しくありません（例: 18002000 または 1800-2000）'; return; }
   if (editingId !== null) {
     const { regular, holiday } = calcHolidayMinutes(date, parsed.start, parsed.end);
     const records = load();
@@ -934,7 +937,8 @@ function addDirect() {
   } else {
     addRecord(date, parsed.start, parsed.end, parsed.minutes, memo, selectedDtag);
   }
-  document.getElementById('directTime').value = '';
+  // 終了時刻を次の記録の開始時刻として残す
+  document.getElementById('directTime').value = parsed.end.replace(':','');
   document.getElementById('directMemo').value = '';
   selectedDtag = null;
   renderDtagRow();
@@ -1444,7 +1448,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v13 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v14 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
