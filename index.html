@@ -510,7 +510,7 @@
       </div>
       <div class="form-group fg-time">
         <label>時刻</label>
-        <input type="text" id="directTime" placeholder="18002000" maxlength="11">
+        <input type="text" id="directTime" placeholder="18002000" maxlength="11" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
       </div>
       <div class="form-group" style="flex:0 0 auto">
         <label>&nbsp;</label>
@@ -593,7 +593,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v14</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v15</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -1103,7 +1103,7 @@ function startEdit(id) {
   editingId = id;
   switchTab('direct');
   document.getElementById('directDate').value = r.date;
-  document.getElementById('directTime').value = r.start.replace(':','') + '-' + r.end.replace(':','');
+  document.getElementById('directTime').value = r.start.replace(':','') + r.end.replace(':','');
   document.getElementById('directMemo').value = r.memo || '';
   selectedDtag = r.dtag || null;
   renderDtagRow();
@@ -1448,7 +1448,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v14 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v15 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
