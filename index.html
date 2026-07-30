@@ -593,7 +593,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v15</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v16</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -970,8 +970,12 @@ function addNoOvertime() {
   const date = document.getElementById('directDate').value;
   if (!date) { errEl.textContent = '日付を選択してください'; return; }
   const records = load();
-  if (records.some(r => r.date === date)) {
-    errEl.textContent = 'この日には既に記録があります';
+  // タグ9・Yは残業ではないので、その日にそれしか無ければ「残業なし」を登録できる
+  const blocking = records.find(r => r.date === date && (r.none || !isExcludedTag(r.dtag)));
+  if (blocking) {
+    errEl.textContent = blocking.none
+      ? 'この日は既に「残業なし」で登録済みです'
+      : 'この日には残業の記録があります';
     return;
   }
   records.push({ id: Date.now(), date, none: true, start: '', end: '', minutes: 0, regular: 0, holiday: 0, memo: '' });
@@ -1082,7 +1086,10 @@ function startClock() {
 
 function addRecord(date, start, end, minutes, memo, dtag) {
   const { regular, holiday } = calcHolidayMinutes(date, start, end);
-  const records = load().filter(r => !(r.none && r.date === date));
+  // 実際の残業を登録した日は「残業なし」マークを解除する（9・Yは残業でないので残す）
+  const records = isExcludedTag(dtag)
+    ? load()
+    : load().filter(r => !(r.none && r.date === date));
   records.push({ id: Date.now(), date, start, end, minutes, regular, holiday, memo: memo || '', dtag: dtag || null });
   records.sort((a,b) => a.date.localeCompare(b.date));
   save(records);
@@ -1448,7 +1455,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v15 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v16 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
