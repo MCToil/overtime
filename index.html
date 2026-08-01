@@ -167,7 +167,7 @@
   .day-cell .dlabel { font-size: 10px; color: var(--text-dim); line-height: 1.3; }
   .day-cell.hol .dlabel { color: #ef9a9a; }
   .day-cell .ddate { font-size: 9px; color: var(--text-dim); line-height: 1.3; }
-  .day-cell .dval { font-size: 12px; font-weight: 700; margin-top: 2px; line-height: 1.3; }
+  .day-cell .dval { font-size: 12px; font-weight: 700; margin-top: 2px; line-height: 1.3; letter-spacing: -.3px; white-space: nowrap; }
   .day-cell .dval span { font-size: 9px; font-weight: 400; }
   .day-cell .dval.zero { color: var(--text-dim); font-weight: 400; }
   .day-cell .dval.okmark { color: var(--ok); }
@@ -1252,7 +1252,7 @@ function render() {
       if (!dayRecs.length)                          val = '<div class="dval zero">—</div>';
       else if (mins === 0 && dayRecs.some(r=>r.none)) val = '<div class="dval okmark">✓</div>';
       else if (mins === 0)                          val = '<div class="dval zero">0<span>h</span></div>';
-      else val = `<div class="dval">${Math.floor(mins/60)}<span>h</span>${mins%60 ? String(mins%60).padStart(2,'0')+'<span>m</span>' : ''}</div>`;
+      else val = `<div class="dval">${Math.floor(mins/60)}<span>h</span>${mins%60 ? `<span>${String(mins%60).padStart(2,'0')}</span>` : ''}</div>`;
       cells += `<div class="${cls}" style="grid-column:${dow === 0 ? 7 : dow}">
         <div class="dlabel">${DOW[dow]}</div>
         <div class="ddate">${ds.slice(5).replace('-','/')}</div>
