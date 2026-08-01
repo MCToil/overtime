@@ -161,6 +161,16 @@
   }
   .week-detail.open { display: block; }
   .week-detail-title { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+  .day-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 12px; }
+  .day-cell { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 5px 1px; text-align: center; min-width: 0; overflow: hidden; }
+  .day-cell.today { border-color: var(--accent-light); }
+  .day-cell .dlabel { font-size: 10px; color: var(--text-dim); line-height: 1.3; }
+  .day-cell.hol .dlabel { color: #ef9a9a; }
+  .day-cell .ddate { font-size: 9px; color: var(--text-dim); line-height: 1.3; }
+  .day-cell .dval { font-size: 12px; font-weight: 700; margin-top: 2px; line-height: 1.3; }
+  .day-cell .dval span { font-size: 9px; font-weight: 400; }
+  .day-cell .dval.zero { color: var(--text-dim); font-weight: 400; }
+  .day-cell .dval.okmark { color: var(--ok); }
   .week-detail table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .week-detail td { padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
   .week-detail tr:last-child td { border-bottom: none; }
@@ -593,7 +603,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v16</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v17</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -1225,8 +1235,34 @@ function render() {
     detail._key = label;
     detail.className = 'week-detail open';
     const weekRecs = recs.filter(r => r.date >= ws && r.date <= we).reverse();
+
+    // 日別サマリー（曜日の位置に合わせて配置）
+    const DOW = ['日','月','火','水','木','金','土'];
+    const ts3 = todayStr();
+    let cells = '';
+    for (let d = new Date(ws + 'T00:00:00'); dateStr(d) <= we; d.setDate(d.getDate() + 1)) {
+      const ds      = dateStr(d);
+      const dow     = d.getDay();
+      const dayRecs = recs.filter(r => r.date === ds);
+      const mins    = countedMinutes(dayRecs).total;
+      const cls     = [ 'day-cell',
+                        isHolidayDay(ds) ? 'hol' : '',
+                        ds === ts3 ? 'today' : '' ].filter(Boolean).join(' ');
+      let val;
+      if (!dayRecs.length)                          val = '<div class="dval zero">—</div>';
+      else if (mins === 0 && dayRecs.some(r=>r.none)) val = '<div class="dval okmark">✓</div>';
+      else if (mins === 0)                          val = '<div class="dval zero">0<span>h</span></div>';
+      else val = `<div class="dval">${Math.floor(mins/60)}<span>h</span>${mins%60 ? String(mins%60).padStart(2,'0')+'<span>m</span>' : ''}</div>`;
+      cells += `<div class="${cls}" style="grid-column:${dow === 0 ? 7 : dow}">
+        <div class="dlabel">${DOW[dow]}</div>
+        <div class="ddate">${ds.slice(5).replace('-','/')}</div>
+        ${val}
+      </div>`;
+    }
+    const strip = `<div class="day-strip">${cells}</div>`;
+
     if (!weekRecs.length) {
-      detail.innerHTML = `<div class="week-detail-title">${label}　記録なし</div>`;
+      detail.innerHTML = `<div class="week-detail-title">${label}　記録なし</div>${strip}`;
       return;
     }
     const rows = weekRecs.map(r => {
@@ -1257,6 +1293,7 @@ function render() {
     }).join('');
     detail.innerHTML = `
       <div class="week-detail-title">${label}</div>
+      ${strip}
       <table><tbody>${rows}</tbody></table>
     `;
   }
@@ -1455,7 +1492,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v16 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v17 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
