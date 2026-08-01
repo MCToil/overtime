@@ -146,7 +146,7 @@
   }
 
   .week-box .wlabel { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
-  .week-box .wval   { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .week-box .wval   { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -.5px; }
   .week-box .wval span { font-size: 11px; font-weight: 400; color: var(--text-dim); }
   .week-box.current { border: 1px solid var(--accent); }
   .week-box { cursor: pointer; transition: background .15s; }
@@ -1312,7 +1312,7 @@ function render() {
     box.innerHTML = `
       <div class="wlabel">第${i+1}週</div>
       <div class="wlabel" style="font-size:10px">${fmtDate(w.start).slice(5)} - ${fmtDate(w.end).slice(5)}</div>
-      <div class="wval">${Math.floor(wMin/60)}<span>h</span>${wMin%60>0?`${String(wMin%60).padStart(2,'0')}<span>m</span>`:''}</div>
+      <div class="wval">${Math.floor(wMin/60)}<span>h</span>${wMin%60>0?`<span>${String(wMin%60).padStart(2,'0')}</span>`:''}</div>
       ${wHol>0 ? `<div style="font-size:10px;color:#90a4ae;margin-top:3px">休日 ${fmtMin(wHol)}</div>` : ''}
     `;
     box.addEventListener('click', () => {
