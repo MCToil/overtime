@@ -603,7 +603,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v17</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v18</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -1196,25 +1196,42 @@ function render() {
   bar.style.background = pct >= 100 ? 'var(--danger)' : pct >= 75 ? 'var(--warn)' : 'var(--ok)';
 
   const remainMin = Math.max(0, 80*60 - totalMin);
-  document.getElementById('remainLabel').textContent = `残り ${fmtMin(remainMin)}`;
+
+  // 期間の進行状況（今日を基準に、この期間があと何日残っているか）
+  const MS_DAY   = 86400000;
+  const startD   = new Date(startStr   + 'T00:00:00');
+  const endD     = new Date(endStr     + 'T00:00:00');
+  const todayD   = new Date(todayStr() + 'T00:00:00');
+  const isPast   = todayD > endD;  // 締め済みの過去期間
+  const daysLeft = isPast ? 0 : Math.max(0, Math.round((endD - todayD) / MS_DAY)); // 今日を除く残り日数
+  const closing  = isPast || daysLeft === 0;  // これ以上は増えない
+
+  document.getElementById('remainLabel').textContent =
+    `残り ${fmtMin(remainMin)}` +
+    (isPast ? '（期間終了）' : daysLeft === 0 ? ' ・ 本日最終日' : ` ・ あと${daysLeft}日`);
 
   // Warning — priority: highest first
+  // 先読みの警告（ペース・ペースを落として）は、期間が終了/最終日なら出さない
   const warnEl = document.getElementById('warningBanner');
   warnEl.className = 'warning-banner';
   warnEl.textContent = '';
 
   if (totalMin >= 80*60) {
     warnEl.classList.add('danger');
-    warnEl.textContent = `🚨 残業時間が上限の80時間を超えました（現在 ${fmtMin(totalMin)}）。`;
+    warnEl.textContent = `🚨 残業時間が上限の80時間を超えました（${isPast ? '最終' : '現在'} ${fmtMin(totalMin)}）。`;
   } else if (totalMin >= 70*60) {
     warnEl.classList.add('danger');
-    warnEl.textContent = `⚠️ 残業時間が70時間を超えました（現在 ${fmtMin(totalMin)}）。上限まで残り ${fmtMin(remainMin)} です。`;
+    warnEl.textContent = isPast
+      ? `⚠️ この期間は70時間を超えました（最終 ${fmtMin(totalMin)}／上限まで残り ${fmtMin(remainMin)}）。`
+      : `⚠️ 残業時間が70時間を超えました（現在 ${fmtMin(totalMin)}）。上限まで残り ${fmtMin(remainMin)} です。`;
   } else if (remainMin < 20*60) {
-    warnEl.classList.add('danger');
-    warnEl.textContent = `⚠️ 上限まで残り ${fmtMin(remainMin)} しかありません。ペースを落としてください。`;
-  } else if (totalMin > 40*60) {
+    warnEl.classList.add(closing ? 'warn' : 'danger');
+    warnEl.textContent = closing
+      ? `⚠️ 累計 ${fmtMin(totalMin)}（上限まで残り ${fmtMin(remainMin)}）。`
+      : `⚠️ 上限まで残り ${fmtMin(remainMin)} しかありません。ペースを落としてください。`;
+  } else if (totalMin > 40*60 && !closing) {
     warnEl.classList.add('warn');
-    warnEl.textContent = `⚠️ 累計 ${fmtMin(totalMin)} の残業です。このペースだと上限80時間を超える可能性があります。`;
+    warnEl.textContent = `⚠️ 累計 ${fmtMin(totalMin)} の残業です。残り${daysLeft}日、このペースだと上限80時間を超える可能性があります。`;
   }
 
   // Weekly grid
@@ -1492,7 +1509,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v17 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v18 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
