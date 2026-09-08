@@ -630,7 +630,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v19</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v20</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -646,8 +646,8 @@
       <tr><td>8</td><td>非指定日　日当直超勤</td></tr>
       <tr><td>9</td><td>法人外業務</td></tr>
       <tr><td>10</td><td>28h連続勤務後の勤務時間内労務</td></tr>
-      <tr><td>Y</td><td>有給</td></tr>
-      <tr><td>S</td><td>サービス残業（残業時間に算入せず、累計していく）</td></tr>
+      <tr><td>Y</td><td>有給（同じ日の残業から差引。差し引けた分をサービス残業に加算）</td></tr>
+      <tr><td>S</td><td>サービス残業（同じ日の残業から差引。その時間を累計していく）</td></tr>
       <tr><td>W</td><td>残業時間に算入し、その分をサービス残業の累計から差し引く</td></tr>
     </table>
     <button class="btn btn-sm" onclick="document.getElementById('dtagHelpOverlay').style.display='none'" style="margin-top:12px;width:100%">閉じる</button>
@@ -736,17 +736,39 @@ function save(records) { localStorage.setItem(STORE_KEY, JSON.stringify(records)
 // その時間分を差し引く。ただし日ごとに 0 分未満にはしない(他の日へ波及させない)。
 function isExcludedTag(t) { return t === '9' || t === 'Y'; }
 
-// タグ S(サービス残業) は残業に一切算入しない（同日の残業も減らさない）。
-// 代わりに期間をまたいで累計され、タグ W の時間ぶんだけ消化される。
+// タグ S(サービス残業) は同じ日の残業時間から差し引く（その時間は残業ではないため）。
+// 差し引いた上で、期間をまたいで累計され、タグ W の時間ぶんだけ消化される。
 function isServiceTag(t) { return t === 'S'; }
 
+// 同じ日の残業から差し引くタグ（9・Y・S）
+function isDeductedTag(t) { return isExcludedTag(t) || isServiceTag(t); }
+
 // サービス残業の累計残高（全期間・締めでリセットしない）
+//  ・S … 記録した時間をそのまま累計に加える
+//  ・Y … 残業から「実際に差し引かれた」分だけ累計に加える
+//        （その日の残業が足りず差し引ききれなかった分は加えない）
+//  ・W … 累計から消化する
 function serviceBalance(allRecords) {
+  const byDate = {};
   let earned = 0, used = 0;
   for (const r of allRecords) {
     if (r.none) continue;
-    if (r.dtag === 'S')      earned += r.minutes;
-    else if (r.dtag === 'W') used   += r.minutes;
+    const b = byDate[r.date] || (byDate[r.date] = { plus: 0, s: 0, e9: 0, eY: 0 });
+    if (r.dtag === 'S')      b.s  += r.minutes;
+    else if (r.dtag === '9') b.e9 += r.minutes;
+    else if (r.dtag === 'Y') b.eY += r.minutes;
+    else {
+      b.plus += r.minutes;
+      if (r.dtag === 'W') used += r.minutes;
+    }
+  }
+  for (const b of Object.values(byDate)) {
+    earned += b.s;
+    const demand = b.s + b.e9 + b.eY;         // 差し引きたい合計
+    if (demand > 0 && b.eY > 0) {
+      const actual = Math.min(b.plus, demand); // 実際に引けた合計（0未満にはしない）
+      earned += Math.round(b.eY * actual / demand);
+    }
   }
   return { earned, used, remain: earned - used };
 }
@@ -767,9 +789,8 @@ function countedMinutes(recs) {
   const byDate = {};
   for (const r of recs) {
     if (r.none) continue;
-    if (isServiceTag(r.dtag)) continue;          // サービス残業は残業時間に含めない
     const b = byDate[r.date] || (byDate[r.date] = { plus: 0, minus: 0, holiday: 0 });
-    if (isExcludedTag(r.dtag)) { b.minus += r.minutes; }
+    if (isDeductedTag(r.dtag)) { b.minus += r.minutes; }  // 9・Y・S は同日の残業から差引
     else { b.plus += r.minutes; b.holiday += (r.holiday || 0); }
   }
   let total = 0, holiday = 0;
@@ -846,22 +867,38 @@ function verifyTotal() {
     const dur = dur9(r);
     if (dur === null) { problems.push(`${r.date}: 時刻の形式が不正 (${r.start}〜${r.end})`); continue; }
     if (dur !== r.minutes) problems.push(`${r.date}: 保存値 ${r.minutes}分 ≠ 再計算 ${dur}分`);
-    if (r.dtag === 'S') { svcCount++; continue; }   // 残業には算入しない
     const d = days[r.date] || (days[r.date] = { plus: 0, minus: 0, sPlus: 0, sMinus: 0 });
-    const ex = (r.dtag === '9' || r.dtag === 'Y');
-    if (ex) { excluded++; d.minus += dur; d.sMinus += (r.minutes || 0); }
-    else    { d.plus  += dur; d.sPlus  += (r.minutes || 0); }
+    if (r.dtag === 'S') { svcCount++; d.minus += dur; d.sMinus += (r.minutes || 0); }
+    else if (r.dtag === '9' || r.dtag === 'Y') { excluded++; d.minus += dur; d.sMinus += (r.minutes || 0); }
+    else { d.plus += dur; d.sPlus += (r.minutes || 0); }
   }
 
   // サービス残業の残高も独立経路で再計算（全期間・期間で区切らない）
-  let svcEarned = 0, svcUsed = 0, svcEarnedStored = 0, svcUsedStored = 0;
+  // S=そのまま加算 / Y=実際に残業から引けた分だけ加算 / W=消化
+  let svcUsed = 0, svcUsedStored = 0;
+  const svcDays = {};
   for (const r of raw) {
     if (r.none || typeof r.date !== 'string') continue;
-    if (r.dtag !== 'S' && r.dtag !== 'W') continue;
     const dur = dur9(r);
     if (dur === null) continue;
-    if (r.dtag === 'S') { svcEarned += dur; svcEarnedStored += (r.minutes || 0); }
-    else                { svcUsed   += dur; svcUsedStored   += (r.minutes || 0); }
+    const b = svcDays[r.date] ||
+      (svcDays[r.date] = { plus:0, s:0, e9:0, eY:0, sPlus:0, sS:0, s9:0, sY:0 });
+    if      (r.dtag === 'S') { b.s  += dur; b.sS += (r.minutes || 0); }
+    else if (r.dtag === '9') { b.e9 += dur; b.s9 += (r.minutes || 0); }
+    else if (r.dtag === 'Y') { b.eY += dur; b.sY += (r.minutes || 0); }
+    else {
+      b.plus += dur; b.sPlus += (r.minutes || 0);
+      if (r.dtag === 'W') { svcUsed += dur; svcUsedStored += (r.minutes || 0); }
+    }
+  }
+  let svcEarned = 0, svcEarnedStored = 0;
+  for (const b of Object.values(svcDays)) {
+    svcEarned       += b.s;
+    svcEarnedStored += b.sS;
+    const demand = b.s + b.e9 + b.eY;
+    if (demand > 0 && b.eY > 0) svcEarned += Math.round(b.eY * Math.min(b.plus, demand) / demand);
+    const demandS = b.sS + b.s9 + b.sY;
+    if (demandS > 0 && b.sY > 0) svcEarnedStored += Math.round(b.sY * Math.min(b.sPlus, demandS) / demandS);
   }
   const svcOkay = (svcEarned - svcUsed) === (svcEarnedStored - svcUsedStored);
   if (!svcOkay) problems.push(`サービス残業の残高が不一致（再計算 ${svcEarned - svcUsed}分 ≠ 表示 ${svcEarnedStored - svcUsedStored}分）`);
@@ -1234,12 +1271,12 @@ function render() {
   const holidayMin = counted.holiday;
   const regularMin = totalMin - holidayMin;
 
-  // 日ごとの 9/Y 差引情報(一覧表示用) — S は残業に無関係なので除く
+  // 日ごとの 9/Y/S 差引情報(一覧表示用)
   const dayAgg = {};
   inPeriod.forEach(r => {
-    if (r.none || isServiceTag(r.dtag)) return;
+    if (r.none) return;
     const b = dayAgg[r.date] || (dayAgg[r.date] = { plus: 0, minus: 0 });
-    if (isExcludedTag(r.dtag)) b.minus += r.minutes; else b.plus += r.minutes;
+    if (isDeductedTag(r.dtag)) b.minus += r.minutes; else b.plus += r.minutes;
   });
 
   // サービス残業の累計残高（期間に関係なく全記録から算出）
@@ -1252,7 +1289,7 @@ function render() {
     (svcAbs % 60 ? `<span style="font-size:18px;font-weight:700;color:var(--text)">${String(svcAbs%60).padStart(2,'0')}</span><span>m</span>` : '');
   document.getElementById('svcSub').textContent = svcOver
     ? `消化しすぎです（サービス残業の累計を ${fmtMin(svcAbs)} 超えて W を登録しています）`
-    : svc.earned === 0 ? 'タグ S で記録するとここに累計されます'
+    : svc.earned === 0 ? 'タグ S（と Y の差引分）がここに累計されます'
     : `未消化のサービス残業（タグ W の登録で減ります）`;
   const svcPct = svc.earned > 0 ? Math.min(svc.used / svc.earned * 100, 100) : 0;
   const svcBar = document.getElementById('svcBar');
@@ -1405,7 +1442,7 @@ function render() {
       } else {
         const share = countedShare(r);
         if (share !== r.minutes) {
-          minHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span> <strong>→ ${fmtMin(share)}</strong><br><span style="color:var(--text-dim);font-size:10px">9/Y差引</span>`;
+          minHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span> <strong>→ ${fmtMin(share)}</strong><br><span style="color:var(--text-dim);font-size:10px">9/Y/S差引</span>`;
         }
         if (r.dtag === 'W') minHtml += `<br><span style="color:var(--text-dim);font-size:10px">S消化</span>`;
       }
@@ -1547,7 +1584,7 @@ function render() {
       } else {
         const share = countedShare(r);
         if (share !== r.minutes) {
-          timeHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span> <strong>→ ${fmtMin(share)}</strong><br><span style="color:var(--text-dim);font-size:10px">9/Y差引</span>`;
+          timeHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span> <strong>→ ${fmtMin(share)}</strong><br><span style="color:var(--text-dim);font-size:10px">9/Y/S差引</span>`;
         } else if (hol > 0 && !isAllHoliday) {
           timeHtml += `<span class="hbadge">深夜 ${fmtMin(hol)}</span>`;
         }
@@ -1623,7 +1660,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v19 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v20 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
