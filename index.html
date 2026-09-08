@@ -120,6 +120,12 @@
   .annual-total span { font-size: 14px; font-weight: 400; color: var(--text-dim); }
   .annual-sub { font-size: 12px; color: var(--text-dim); }
 
+  /* ── サービス残業（累計・期間でリセットしない） ── */
+  .svc-remain { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .svc-remain span { font-size: 14px; font-weight: 400; color: var(--text-dim); }
+  .svc-remain.over { color: var(--danger); }
+  .svc-sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
   .months-grid {
     display: grid;
     grid-template-columns: repeat(6, 1fr);
@@ -152,6 +158,13 @@
   .week-box { cursor: pointer; transition: background .15s; }
   .week-box:hover { background: #2a2f47; }
   .week-box.selected { background: #2a2f47; border-color: var(--accent-light); }
+  /* 入力済み/未入力を示すドット */
+  .week-box .wdots { display: flex; gap: 2px; justify-content: center; margin-top: 6px; }
+  .wdot { width: 5px; height: 5px; border-radius: 50%; flex: 0 0 auto; background: var(--border); }
+  .wdot.on  { background: var(--ok); }
+  .wdot.off { background: transparent; box-shadow: inset 0 0 0 1.5px var(--danger); }
+  .wdot.fut { background: var(--border); opacity: .45; }
+  .week-miss { color: var(--danger); }
 
   .week-detail {
     margin-top: 12px;
@@ -502,6 +515,20 @@
   <div class="week-detail" id="weekDetail"></div>
 </div>
 
+<!-- サービス残業（全期間の累計・締めでリセットしない） -->
+<div class="card">
+  <div class="card-title">サービス残業（累計・残り）</div>
+  <div class="svc-remain" id="svcRemain">0<span>h</span></div>
+  <div class="svc-sub" id="svcSub"></div>
+  <div class="progress-bar-wrap" style="margin-top:10px">
+    <div class="progress-bar" id="svcBar" style="width:0%;background:var(--ok)"></div>
+  </div>
+  <div class="progress-info">
+    <span id="svcUsedLabel">消化 0h</span>
+    <span id="svcEarnedLabel">累計 0h</span>
+  </div>
+</div>
+
 
 <!-- Input -->
 <div class="card">
@@ -603,7 +630,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v18</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v19</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -620,6 +647,8 @@
       <tr><td>9</td><td>法人外業務</td></tr>
       <tr><td>10</td><td>28h連続勤務後の勤務時間内労務</td></tr>
       <tr><td>Y</td><td>有給</td></tr>
+      <tr><td>S</td><td>サービス残業（残業時間に算入せず、累計していく）</td></tr>
+      <tr><td>W</td><td>残業時間に算入し、その分をサービス残業の累計から差し引く</td></tr>
     </table>
     <button class="btn btn-sm" onclick="document.getElementById('dtagHelpOverlay').style.display='none'" style="margin-top:12px;width:100%">閉じる</button>
   </div>
@@ -707,10 +736,38 @@ function save(records) { localStorage.setItem(STORE_KEY, JSON.stringify(records)
 // その時間分を差し引く。ただし日ごとに 0 分未満にはしない(他の日へ波及させない)。
 function isExcludedTag(t) { return t === '9' || t === 'Y'; }
 
+// タグ S(サービス残業) は残業に一切算入しない（同日の残業も減らさない）。
+// 代わりに期間をまたいで累計され、タグ W の時間ぶんだけ消化される。
+function isServiceTag(t) { return t === 'S'; }
+
+// サービス残業の累計残高（全期間・締めでリセットしない）
+function serviceBalance(allRecords) {
+  let earned = 0, used = 0;
+  for (const r of allRecords) {
+    if (r.none) continue;
+    if (r.dtag === 'S')      earned += r.minutes;
+    else if (r.dtag === 'W') used   += r.minutes;
+  }
+  return { earned, used, remain: earned - used };
+}
+
+// 期間内の各日を「入力済み / 未入力 / これから(未来)」に分類する
+function dayEntryStates(ws, we, recs) {
+  const has = new Set(recs.map(r => r.date));
+  const ts  = todayStr();
+  const out = [];
+  for (let d = new Date(ws + 'T00:00:00'); dateStr(d) <= we; d.setDate(d.getDate() + 1)) {
+    const ds = dateStr(d);
+    out.push({ date: ds, state: has.has(ds) ? 'on' : (ds > ts ? 'fut' : 'off') });
+  }
+  return out;
+}
+
 function countedMinutes(recs) {
   const byDate = {};
   for (const r of recs) {
     if (r.none) continue;
+    if (isServiceTag(r.dtag)) continue;          // サービス残業は残業時間に含めない
     const b = byDate[r.date] || (byDate[r.date] = { plus: 0, minus: 0, holiday: 0 });
     if (isExcludedTag(r.dtag)) { b.minus += r.minutes; }
     else { b.plus += r.minutes; b.holiday += (r.holiday || 0); }
@@ -770,24 +827,44 @@ function verifyTotal() {
   const endKey = `${ey}-${pad(em)}-10`;
 
   // タグ9・Yは残業対象外。同日の他の残業から差し引き、日ごとに0分未満にはしない。
-  let count = 0, noneDays = 0, excluded = 0;
+  // タグSはサービス残業で残業に一切算入しない（全期間で累計し、タグWで消化）。
+  let count = 0, noneDays = 0, excluded = 0, svcCount = 0;
   const problems = [];
   const days = {};
+  const dur9 = r => {   // 開始・終了から所要時間を再計算
+    const ms = /^(\d{1,2}):(\d{2})$/.exec(r.start || '');
+    const me = /^(\d{1,2}):(\d{2})$/.exec(r.end || '');
+    if (!ms || !me) return null;
+    let d = (+me[1]) * 60 + (+me[2]) - ((+ms[1]) * 60 + (+ms[2]));
+    if (d <= 0) d += 1440;
+    return d;
+  };
   for (const r of raw) {
     if (typeof r.date !== 'string' || r.date < startKey || r.date > endKey) continue;
     if (r.none) { noneDays++; continue; }
     count++;
-    const ms = /^(\d{1,2}):(\d{2})$/.exec(r.start || '');
-    const me = /^(\d{1,2}):(\d{2})$/.exec(r.end || '');
-    if (!ms || !me) { problems.push(`${r.date}: 時刻の形式が不正 (${r.start}〜${r.end})`); continue; }
-    let dur = (+me[1]) * 60 + (+me[2]) - ((+ms[1]) * 60 + (+ms[2]));
-    if (dur <= 0) dur += 1440;
+    const dur = dur9(r);
+    if (dur === null) { problems.push(`${r.date}: 時刻の形式が不正 (${r.start}〜${r.end})`); continue; }
     if (dur !== r.minutes) problems.push(`${r.date}: 保存値 ${r.minutes}分 ≠ 再計算 ${dur}分`);
+    if (r.dtag === 'S') { svcCount++; continue; }   // 残業には算入しない
     const d = days[r.date] || (days[r.date] = { plus: 0, minus: 0, sPlus: 0, sMinus: 0 });
     const ex = (r.dtag === '9' || r.dtag === 'Y');
     if (ex) { excluded++; d.minus += dur; d.sMinus += (r.minutes || 0); }
     else    { d.plus  += dur; d.sPlus  += (r.minutes || 0); }
   }
+
+  // サービス残業の残高も独立経路で再計算（全期間・期間で区切らない）
+  let svcEarned = 0, svcUsed = 0, svcEarnedStored = 0, svcUsedStored = 0;
+  for (const r of raw) {
+    if (r.none || typeof r.date !== 'string') continue;
+    if (r.dtag !== 'S' && r.dtag !== 'W') continue;
+    const dur = dur9(r);
+    if (dur === null) continue;
+    if (r.dtag === 'S') { svcEarned += dur; svcEarnedStored += (r.minutes || 0); }
+    else                { svcUsed   += dur; svcUsedStored   += (r.minutes || 0); }
+  }
+  const svcOkay = (svcEarned - svcUsed) === (svcEarnedStored - svcUsedStored);
+  if (!svcOkay) problems.push(`サービス残業の残高が不一致（再計算 ${svcEarned - svcUsed}分 ≠ 表示 ${svcEarnedStored - svcUsedStored}分）`);
 
   let total = 0, displayed = 0;
   for (const d of Object.values(days)) {
@@ -801,9 +878,11 @@ function verifyTotal() {
   show(ok, `
     ${ok ? '✅ <strong>検算一致</strong>' : '❌ <strong>不一致があります</strong>'}<br>
     対象期間: ${startKey.replace(/-/g,'/')} 〜 ${endKey.replace(/-/g,'/')}<br>
-    対象記録: ${count}件${excluded ? `（うち対象外タグ9/Y ${excluded}件）` : ''}${noneDays ? `（ほか残業なし ${noneDays}日）` : ''}<br>
+    対象記録: ${count}件${excluded ? `（うち対象外タグ9/Y ${excluded}件）` : ''}${svcCount ? `（うちサービス残業S ${svcCount}件）` : ''}${noneDays ? `（ほか残業なし ${noneDays}日）` : ''}<br>
     開始・終了時刻からの再計算: <strong>${fmt(total)}</strong><br>
-    画面表示に使われる合計: <strong>${fmt(displayed)}</strong>
+    画面表示に使われる合計: <strong>${fmt(displayed)}</strong><br>
+    サービス残業の残り（全期間）: <strong>${fmt(Math.max(0, svcEarned - svcUsed))}</strong>
+    <span style="color:var(--text-dim)">（累計 ${fmt(svcEarned)} − 消化 ${fmt(svcUsed)}）</span>
     ${problems.length ? '<br>' + problems.map(p => '⚠️ ' + p).join('<br>') : ''}
   `);
 }
@@ -955,7 +1034,7 @@ function addDirect() {
 }
 
 // ─── 数字タグ (1-10, Y) ──────────────────────────────────────────────────────
-const DTAG_VALUES = ['1','2','3','4','5','6','7','8','9','10','Y'];
+const DTAG_VALUES = ['1','2','3','4','5','6','7','8','9','10','Y','S','W'];
 let selectedDtag = null;
 
 function renderDtagRow() {
@@ -980,8 +1059,9 @@ function addNoOvertime() {
   const date = document.getElementById('directDate').value;
   if (!date) { errEl.textContent = '日付を選択してください'; return; }
   const records = load();
-  // タグ9・Yは残業ではないので、その日にそれしか無ければ「残業なし」を登録できる
-  const blocking = records.find(r => r.date === date && (r.none || !isExcludedTag(r.dtag)));
+  // タグ9・Y・Sは残業ではないので、その日にそれしか無ければ「残業なし」を登録できる
+  const blocking = records.find(r => r.date === date &&
+    (r.none || (!isExcludedTag(r.dtag) && !isServiceTag(r.dtag))));
   if (blocking) {
     errEl.textContent = blocking.none
       ? 'この日は既に「残業なし」で登録済みです'
@@ -1096,8 +1176,8 @@ function startClock() {
 
 function addRecord(date, start, end, minutes, memo, dtag) {
   const { regular, holiday } = calcHolidayMinutes(date, start, end);
-  // 実際の残業を登録した日は「残業なし」マークを解除する（9・Yは残業でないので残す）
-  const records = isExcludedTag(dtag)
+  // 実際の残業を登録した日は「残業なし」マークを解除する（9・Y・Sは残業でないので残す）
+  const records = (isExcludedTag(dtag) || isServiceTag(dtag))
     ? load()
     : load().filter(r => !(r.none && r.date === date));
   records.push({ id: Date.now(), date, start, end, minutes, regular, holiday, memo: memo || '', dtag: dtag || null });
@@ -1154,13 +1234,32 @@ function render() {
   const holidayMin = counted.holiday;
   const regularMin = totalMin - holidayMin;
 
-  // 日ごとの 9/Y 差引情報(一覧表示用)
+  // 日ごとの 9/Y 差引情報(一覧表示用) — S は残業に無関係なので除く
   const dayAgg = {};
   inPeriod.forEach(r => {
-    if (r.none) return;
+    if (r.none || isServiceTag(r.dtag)) return;
     const b = dayAgg[r.date] || (dayAgg[r.date] = { plus: 0, minus: 0 });
     if (isExcludedTag(r.dtag)) b.minus += r.minutes; else b.plus += r.minutes;
   });
+
+  // サービス残業の累計残高（期間に関係なく全記録から算出）
+  const svc     = serviceBalance(records);
+  const svcOver = svc.remain < 0;
+  const svcEl   = document.getElementById('svcRemain');
+  const svcAbs  = Math.abs(svc.remain);
+  svcEl.className = 'svc-remain' + (svcOver ? ' over' : '');
+  svcEl.innerHTML = `${svcOver ? '−' : ''}${Math.floor(svcAbs/60)}<span>h</span>` +
+    (svcAbs % 60 ? `<span style="font-size:18px;font-weight:700;color:var(--text)">${String(svcAbs%60).padStart(2,'0')}</span><span>m</span>` : '');
+  document.getElementById('svcSub').textContent = svcOver
+    ? `消化しすぎです（サービス残業の累計を ${fmtMin(svcAbs)} 超えて W を登録しています）`
+    : svc.earned === 0 ? 'タグ S で記録するとここに累計されます'
+    : `未消化のサービス残業（タグ W の登録で減ります）`;
+  const svcPct = svc.earned > 0 ? Math.min(svc.used / svc.earned * 100, 100) : 0;
+  const svcBar = document.getElementById('svcBar');
+  svcBar.style.width = svcPct + '%';
+  svcBar.style.background = svcOver ? 'var(--danger)' : 'var(--ok)';
+  document.getElementById('svcUsedLabel').textContent   = `消化 ${fmtMin(svc.used)}`;
+  document.getElementById('svcEarnedLabel').textContent = `累計 ${fmtMin(svc.earned)}`;
   // 記録1件ぶんの差引後カウント時間(同日複数記録は按分)
   function countedShare(r) {
     const b = dayAgg[r.date];
@@ -1278,8 +1377,13 @@ function render() {
     }
     const strip = `<div class="day-strip">${cells}</div>`;
 
+    const missDays = dayEntryStates(ws, we, weekRecs).filter(s => s.state === 'off').length;
+    const titleHtml = `<div class="week-detail-title">${label}` +
+      (missDays ? `　<span class="week-miss">未入力 ${missDays}日</span>` : '　<span style="color:var(--ok)">すべて入力済み</span>') +
+      `</div>`;
+
     if (!weekRecs.length) {
-      detail.innerHTML = `<div class="week-detail-title">${label}　記録なし</div>${strip}`;
+      detail.innerHTML = titleHtml + strip;
       return;
     }
     const rows = weekRecs.map(r => {
@@ -1294,13 +1398,16 @@ function render() {
       }
       const memoHtml = r.memo ? `<div class="memo-text" title="${escHtml(r.memo)}">📝 ${escHtml(r.memo)}</div>` : '';
       let minHtml = `<strong>${fmtMin(r.minutes)}</strong>`;
-      if (isExcludedTag(r.dtag)) {
+      if (isServiceTag(r.dtag)) {
+        minHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span><br><span style="color:var(--text-dim);font-size:10px">サービス残業</span>`;
+      } else if (isExcludedTag(r.dtag)) {
         minHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span><br><span style="color:var(--text-dim);font-size:10px">対象外</span>`;
       } else {
         const share = countedShare(r);
         if (share !== r.minutes) {
           minHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span> <strong>→ ${fmtMin(share)}</strong><br><span style="color:var(--text-dim);font-size:10px">9/Y差引</span>`;
         }
+        if (r.dtag === 'W') minHtml += `<br><span style="color:var(--text-dim);font-size:10px">S消化</span>`;
       }
       return `<tr>
         <td>${r.date.replace(/-/g,'/')}${hBadge}</td>
@@ -1309,7 +1416,7 @@ function render() {
       </tr>`;
     }).join('');
     detail.innerHTML = `
-      <div class="week-detail-title">${label}</div>
+      ${titleHtml}
       ${strip}
       <table><tbody>${rows}</tbody></table>
     `;
@@ -1324,6 +1431,9 @@ function render() {
     const wHol  = wCounted.holiday;
     const isCurrent = todayStr() >= ws && todayStr() <= we;
     const label = `第${i+1}週 (${fmtDate(w.start).slice(5)} - ${fmtDate(w.end).slice(5)})`;
+    const states  = dayEntryStates(ws, we, wRecs);
+    const missing = states.filter(s => s.state === 'off').length;
+    const dots    = states.map(s => `<span class="wdot ${s.state}"></span>`).join('');
     const box = document.createElement('div');
     box.className = 'week-box' + (isCurrent ? ' current' : '');
     box.innerHTML = `
@@ -1331,6 +1441,7 @@ function render() {
       <div class="wlabel" style="font-size:10px">${fmtDate(w.start).slice(5)} - ${fmtDate(w.end).slice(5)}</div>
       <div class="wval">${Math.floor(wMin/60)}<span>h</span>${wMin%60>0?`<span>${String(wMin%60).padStart(2,'0')}</span>`:''}</div>
       ${wHol>0 ? `<div style="font-size:10px;color:#90a4ae;margin-top:3px">休日 ${fmtMin(wHol)}</div>` : ''}
+      <div class="wdots" title="${missing ? `未入力 ${missing}日` : 'すべて入力済み'}">${dots}</div>
     `;
     box.addEventListener('click', () => {
       document.querySelectorAll('.week-box').forEach(b => b.classList.remove('selected'));
@@ -1429,7 +1540,9 @@ function render() {
       }
 
       let timeHtml = `<strong>${fmtMin(r.minutes)}</strong>`;
-      if (isExcludedTag(r.dtag)) {
+      if (isServiceTag(r.dtag)) {
+        timeHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span><br><span style="color:var(--text-dim);font-size:10px">サービス残業</span>`;
+      } else if (isExcludedTag(r.dtag)) {
         timeHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span><br><span style="color:var(--text-dim);font-size:10px">対象外</span>`;
       } else {
         const share = countedShare(r);
@@ -1438,6 +1551,7 @@ function render() {
         } else if (hol > 0 && !isAllHoliday) {
           timeHtml += `<span class="hbadge">深夜 ${fmtMin(hol)}</span>`;
         }
+        if (r.dtag === 'W') timeHtml += `<br><span style="color:var(--text-dim);font-size:10px">S消化</span>`;
       }
 
       const memoHtml = r.memo ? `<div class="memo-text" title="${escHtml(r.memo)}">📝 ${escHtml(r.memo)}</div>` : '';
@@ -1509,7 +1623,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v18 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v19 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
