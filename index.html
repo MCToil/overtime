@@ -471,6 +471,7 @@
   .dtag-help-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .dtag-help-table td { padding: 6px 4px; border-bottom: 1px solid var(--border); }
   .dtag-help-table td:first-child { font-weight: 700; width: 32px; }
+  .dow { color: var(--text-dim); font-size: 11px; margin-left: 1px; }
   .log-week-head td { background: var(--bg); font-weight: 700; font-size: 13px; padding: 10px 8px; cursor: pointer; border-top: 2px solid var(--border); user-select: none; -webkit-user-select: none; }
   .log-week-head:active td { opacity: .7; }
   .log-week-arrow { display: inline-block; width: 14px; color: var(--text-dim); }
@@ -633,7 +634,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v22</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v23</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -774,6 +775,13 @@ function serviceBalance(allRecords) {
     }
   }
   return { earned, used, remain: earned - used };
+}
+
+const DOW_JP = ['日','月','火','水','木','金','土'];
+// "2026-09-15" → "2026/09/15(火)"
+function fmtDateDow(ds) {
+  const dow = DOW_JP[new Date(ds + 'T00:00:00').getDay()];
+  return `${ds.replace(/-/g,'/')}<span class="dow">(${dow})</span>`;
 }
 
 // 記録の時間帯を「その日の00:00からの分」で返す（日跨ぎは終了が1440超）
@@ -1608,7 +1616,7 @@ function render() {
       const isAllHoliday = isHolidayDay(r.date);
       const tr = document.createElement('tr');
 
-      let dayLabel = r.date.replace(/-/g,'/');
+      let dayLabel = fmtDateDow(r.date);
       if (isAllHoliday) dayLabel += '<span class="hbadge">休</span>';
       if (r.dtag) dayLabel += `<span class="dtag-badge">${escHtml(String(r.dtag))}</span>`;
 
@@ -1708,7 +1716,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v22 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v23 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
