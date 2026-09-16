@@ -630,7 +630,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v20</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v21</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -771,6 +771,51 @@ function serviceBalance(allRecords) {
     }
   }
   return { earned, used, remain: earned - used };
+}
+
+// 記録の時間帯を「その日の00:00からの分」で返す（日跨ぎは終了が1440超）
+function recInterval(r) {
+  const [sh, sm] = (r.start || '0:00').split(':').map(Number);
+  const [eh, em] = (r.end   || '0:00').split(':').map(Number);
+  let a = sh * 60 + sm, b = eh * 60 + em;
+  if (b <= a) b += 1440;
+  return [a, b];
+}
+function overlapMin(x, y) { return Math.max(0, Math.min(x[1], y[1]) - Math.max(x[0], y[0])); }
+
+// 同じ日の 9/Y/S を、時間帯が重なっている記録から優先的に差し引く。
+// 重なりで引ききれない分だけ、同じ日の他の記録から時刻順に引く（日合計は従来どおり）。
+function allocateDeductions(dayRecs) {
+  const pos = [], neg = [];
+  for (const r of dayRecs) {
+    if (r.none) continue;
+    (isDeductedTag(r.dtag) ? neg : pos).push(r);
+  }
+  pos.sort((a, b) => recInterval(a)[0] - recInterval(b)[0]);
+  const remain = new Map(pos.map(r => [r.id, r.minutes]));
+  for (const d of neg) {
+    let need = d.minutes;
+    const di = recInterval(d);
+    // ① 時間帯が重なっている記録から（重なりが大きい順に）
+    const hits = pos
+      .map(p => ({ p, ov: overlapMin(di, recInterval(p)) }))
+      .filter(x => x.ov > 0)
+      .sort((a, b) => b.ov - a.ov);
+    for (const { p, ov } of hits) {
+      if (need <= 0) break;
+      const take = Math.min(need, ov, remain.get(p.id));
+      remain.set(p.id, remain.get(p.id) - take);
+      need -= take;
+    }
+    // ② 残りは同じ日の他の記録から
+    for (const p of pos) {
+      if (need <= 0) break;
+      const take = Math.min(need, remain.get(p.id));
+      remain.set(p.id, remain.get(p.id) - take);
+      need -= take;
+    }
+  }
+  return remain;
 }
 
 // 期間内の各日を「入力済み / 未入力 / これから(未来)」に分類する
@@ -1271,13 +1316,13 @@ function render() {
   const holidayMin = counted.holiday;
   const regularMin = totalMin - holidayMin;
 
-  // 日ごとの 9/Y/S 差引情報(一覧表示用)
-  const dayAgg = {};
-  inPeriod.forEach(r => {
-    if (r.none) return;
-    const b = dayAgg[r.date] || (dayAgg[r.date] = { plus: 0, minus: 0 });
-    if (isDeductedTag(r.dtag)) b.minus += r.minutes; else b.plus += r.minutes;
-  });
+  // 記録1件ぶんの差引後カウント時間(一覧表示用) — 時間帯が重なる記録から差し引く
+  const countedById = new Map();
+  const recsByDate  = {};
+  inPeriod.forEach(r => { (recsByDate[r.date] || (recsByDate[r.date] = [])).push(r); });
+  for (const recs of Object.values(recsByDate)) {
+    for (const [id, min] of allocateDeductions(recs)) countedById.set(id, min);
+  }
 
   // サービス残業の累計残高（期間に関係なく全記録から算出）
   const svc     = serviceBalance(records);
@@ -1297,12 +1342,8 @@ function render() {
   svcBar.style.background = svcOver ? 'var(--danger)' : 'var(--ok)';
   document.getElementById('svcUsedLabel').textContent   = `消化 ${fmtMin(svc.used)}`;
   document.getElementById('svcEarnedLabel').textContent = `累計 ${fmtMin(svc.earned)}`;
-  // 記録1件ぶんの差引後カウント時間(同日複数記録は按分)
   function countedShare(r) {
-    const b = dayAgg[r.date];
-    if (!b || b.minus === 0 || b.plus === 0) return r.minutes;
-    const dayCounted = Math.max(0, b.plus - b.minus);
-    return Math.round(r.minutes * dayCounted / b.plus);
+    return countedById.has(r.id) ? countedById.get(r.id) : r.minutes;
   }
 
   // Period label + nav state
@@ -1660,7 +1701,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v20 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v21 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
