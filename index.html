@@ -125,6 +125,9 @@
   .svc-remain span { font-size: 14px; font-weight: 400; color: var(--text-dim); }
   .svc-remain.over { color: var(--danger); }
   .svc-sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+  .svc-lines { margin-top: 6px; font-size: 11px; color: var(--text-dim); }
+  .svc-line { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
+  .svc-line span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
   .months-grid {
     display: grid;
@@ -523,9 +526,9 @@
   <div class="progress-bar-wrap" style="margin-top:10px">
     <div class="progress-bar" id="svcBar" style="width:0%;background:var(--ok)"></div>
   </div>
-  <div class="progress-info">
-    <span id="svcUsedLabel">消化 0h</span>
-    <span id="svcEarnedLabel">累計 0h</span>
+  <div class="svc-lines">
+    <div class="svc-line"><span>合計</span><span id="svcAllLine">累計 0h ・ 消化 0h</span></div>
+    <div class="svc-line"><span id="svcPeriodKey">この期間</span><span id="svcPeriodLine">累計 0h ・ 消化 0h</span></div>
   </div>
 </div>
 
@@ -630,7 +633,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v21</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v22</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -1340,8 +1343,12 @@ function render() {
   const svcBar = document.getElementById('svcBar');
   svcBar.style.width = svcPct + '%';
   svcBar.style.background = svcOver ? 'var(--danger)' : 'var(--ok)';
-  document.getElementById('svcUsedLabel').textContent   = `消化 ${fmtMin(svc.used)}`;
-  document.getElementById('svcEarnedLabel').textContent = `累計 ${fmtMin(svc.earned)}`;
+  const svcP = serviceBalance(inPeriod);   // 表示中の期間ぶんだけの内訳
+  document.getElementById('svcAllLine').textContent =
+    `累計 ${fmtMin(svc.earned)} ・ 消化 ${fmtMin(svc.used)}`;
+  document.getElementById('svcPeriodKey').textContent = viewOffset === 0 ? '今期' : 'この期間';
+  document.getElementById('svcPeriodLine').textContent =
+    `累計 ${fmtMin(svcP.earned)} ・ 消化 ${fmtMin(svcP.used)}`;
   function countedShare(r) {
     return countedById.has(r.id) ? countedById.get(r.id) : r.minutes;
   }
@@ -1701,7 +1708,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v21 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v22 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
