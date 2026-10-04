@@ -490,6 +490,22 @@
   .lr-btn { flex: 0 0 auto; width: 26px; height: 26px; padding: 0; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: 13px; line-height: 24px; cursor: pointer; }
   .lr-btn.del { color: var(--danger); border-color: rgba(229,57,53,.4); }
   .lr-btn:active { opacity: .6; }
+  /* 日付ごとのまとまり: 見出し行 + その日の記録（日付の間に太めの線） */
+  .log-table tr.lr-day td { padding: 0; border-bottom: none; border-top: 2px solid var(--border); background: rgba(255,255,255,.035); }
+  .log-table tr.lr-day:first-child td,
+  .log-table tr.log-week-head + tr.lr-day td { border-top: none; }
+  .log-table tr.lr-day.today td { background: rgba(92,107,192,.14); }
+  .lrd { display: flex; align-items: center; gap: 4px; padding: 6px 6px 5px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .lrd-date { font-variant-numeric: tabular-nums; }
+  .lrd-date.hol { color: #ef9a9a; }
+  .lrd-date .dow { font-size: 11px; font-weight: 400; }
+  .lrd-total { margin-left: auto; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .log-table tr.lr-rec td { border-bottom: 1px dashed rgba(255,255,255,.07); }
+  .log-table tr.lr-rec:has(+ tr.lr-day) td,
+  .log-table tr.lr-rec:has(+ tr.log-week-head) td { border-bottom: none; }
+  .lr-rec .lr { padding-left: 10px; }
+  .lr-tag { flex: 0 0 24px; display: inline-flex; }
+  .lr-tag .lr-b { margin-left: 0; }
   .log-week-head td { background: var(--bg); font-weight: 700; font-size: 13px; padding: 10px 8px; cursor: pointer; border-top: 2px solid var(--border); user-select: none; -webkit-user-select: none; }
   .log-week-head:active td { opacity: .7; }
   .log-week-arrow { display: inline-block; width: 14px; color: var(--text-dim); }
@@ -644,7 +660,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v26</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v27</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -1735,18 +1751,37 @@ function render() {
 
     if (!open) return;
 
-    wRecs.forEach(r => {
+    // 日付ごとにまとめる（新しい日付が上、同じ日の中は開始時刻順）
+    const byDay = new Map();
+    wRecs.forEach(r => { if (!byDay.has(r.date)) byDay.set(r.date, []); byDay.get(r.date).push(r); });
+
+    byDay.forEach((dayRecs, date) => {
+      dayRecs.sort((a, b) => (a.none ? -1 : b.none ? 1 : recInterval(a)[0] - recInterval(b)[0]));
+
+      // 日付の見出し行（その日の合計は 9/Y/S の差引・W の内を反映した値）
+      const [, mo, dd] = date.split('-');
+      const dow   = DOW_JP[new Date(date + 'T00:00:00').getDay()];
+      const hol   = isHolidayDay(date);
+      const real  = dayRecs.filter(r => !r.none);
+      const dTot  = countedMinutes(real).total;
+      const dh = document.createElement('tr');
+      dh.className = 'lr-day' + (date === todayStr() ? ' today' : '');
+      dh.innerHTML = `<td colspan="4"><div class="lrd">
+        <span class="lrd-date${hol ? ' hol' : ''}">${mo}/${dd}<span class="dow">(${dow})</span></span>
+        ${hol ? '<span class="lr-b hol">休</span>' : ''}
+        <span class="lrd-total">${real.length ? `計 ${fmtMin(dTot)}` : ''}</span>
+      </div></td>`;
+      logBody.appendChild(dh);
+
+      dayRecs.forEach(r => {
       const tr = document.createElement('tr');
-      const [, mo, dd] = r.date.split('-');
-      const dow = DOW_JP[new Date(r.date + 'T00:00:00').getDay()];
-      let dateHtml = `${mo}/${dd}<span class="dow">(${dow})</span>`;
-      if (isHolidayDay(r.date)) dateHtml += '<span class="lr-b hol">休</span>';
-      if (r.dtag) dateHtml += `<span class="lr-b tag">${escHtml(String(r.dtag))}</span>`;
+      tr.className = 'lr-rec';
+      const tagHtml = `<span class="lr-tag">${r.dtag ? `<span class="lr-b tag">${escHtml(String(r.dtag))}</span>` : ''}</span>`;
       const delBtn = `<button class="lr-btn del" onclick="deleteRecord(${r.id})" aria-label="削除">×</button>`;
 
       if (r.none) {
         tr.innerHTML = `<td colspan="4" class="lr-cell"><div class="lr">
-          <span class="lr-date">${dateHtml}</span>
+          ${tagHtml}
           <span class="lr-none">✓ 残業なし</span>
           <span class="lr-memo"></span>
           ${delBtn}
@@ -1773,7 +1808,7 @@ function render() {
       const memo = r.memo ? escHtml(r.memo) : '';
 
       tr.innerHTML = `<td colspan="4" class="lr-cell"><div class="lr">
-        <span class="lr-date">${dateHtml}</span>
+        ${tagHtml}
         <span class="lr-range">${r.start}-${r.end}</span>
         <span class="lr-memo" title="${memo}">${memo}</span>
         <span class="${minCls}"${why ? ` title="${why}"` : ''}>${minHtml}</span>
@@ -1781,6 +1816,7 @@ function render() {
         ${delBtn}
       </div></td>`;
       logBody.appendChild(tr);
+      });
     });
   });
 }
@@ -1835,7 +1871,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v26 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v27 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
