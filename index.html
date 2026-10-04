@@ -472,6 +472,24 @@
   .dtag-help-table td { padding: 6px 4px; border-bottom: 1px solid var(--border); }
   .dtag-help-table td:first-child { font-weight: 700; width: 32px; }
   .dow { color: var(--text-dim); font-size: 11px; margin-left: 1px; }
+  /* 記録一覧: 1件1行 */
+  .log-table { table-layout: fixed; }   /* 長いメモで表が横に広がらないように */
+  .log-table td.lr-cell { padding: 0; }
+  .lr { display: flex; align-items: center; gap: 4px; padding: 7px 2px; font-size: 13px; line-height: 1.3; white-space: nowrap; }
+  .lr-date { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+  .lr-date .dow { font-size: 10px; }
+  .lr-b { display: inline-block; font-size: 10px; font-weight: 700; line-height: 1; border-radius: 4px; padding: 2px 3px; margin-left: 2px; vertical-align: 1px; }
+  .lr-b.hol { background: rgba(144,164,174,.2); color: #90a4ae; }
+  .lr-b.tag { background: var(--ok); color: #fff; }
+  .lr-range { flex: 0 0 auto; font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .lr-memo { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: var(--text-dim); }
+  .lr-min { flex: 0 0 auto; margin-left: auto; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .lr-min s { color: var(--text-dim); font-weight: 400; font-size: 11px; margin-right: 3px; }
+  .lr-min.off { color: var(--text-dim); font-weight: 400; }
+  .lr-none { color: var(--ok); font-size: 12px; }
+  .lr-btn { flex: 0 0 auto; width: 26px; height: 26px; padding: 0; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: 13px; line-height: 24px; cursor: pointer; }
+  .lr-btn.del { color: var(--danger); border-color: rgba(229,57,53,.4); }
+  .lr-btn:active { opacity: .6; }
   .log-week-head td { background: var(--bg); font-weight: 700; font-size: 13px; padding: 10px 8px; cursor: pointer; border-top: 2px solid var(--border); user-select: none; -webkit-user-select: none; }
   .log-week-head:active td { opacity: .7; }
   .log-week-arrow { display: inline-block; width: 14px; color: var(--text-dim); }
@@ -617,14 +635,6 @@
 <div class="card">
   <div class="card-title">記録一覧</div>
   <table class="log-table">
-    <thead>
-      <tr>
-        <th>日付</th>
-        <th>時間</th>
-        <th>開始〜終了 / メモ</th>
-        <th></th>
-      </tr>
-    </thead>
     <tbody id="logBody"></tbody>
   </table>
   <div class="export-row">
@@ -634,7 +644,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v25</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v26</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -1386,6 +1396,11 @@ function addRecord(date, start, end, minutes, memo, dtag) {
 }
 
 function deleteRecord(id) {
+  const r = load().find(x => x.id === id);
+  if (r) {
+    const what = r.none ? '残業なし' : `${r.start}〜${r.end}${r.dtag ? ` [${r.dtag}]` : ''}`;
+    if (!confirm(`この記録を削除しますか？\n${r.date.replace(/-/g,'/')}　${what}`)) return;
+  }
   if (editingId === id) cancelEdit();
   save(load().filter(r => r.id !== id));
   render();
@@ -1721,57 +1736,50 @@ function render() {
     if (!open) return;
 
     wRecs.forEach(r => {
-      const hol = r.holiday || 0;
-      const isAllHoliday = isHolidayDay(r.date);
       const tr = document.createElement('tr');
-
-      let dayLabel = fmtDateDow(r.date);
-      if (isAllHoliday) dayLabel += '<span class="hbadge">休</span>';
-      if (r.dtag) dayLabel += `<span class="dtag-badge">${escHtml(String(r.dtag))}</span>`;
+      const [, mo, dd] = r.date.split('-');
+      const dow = DOW_JP[new Date(r.date + 'T00:00:00').getDay()];
+      let dateHtml = `${mo}/${dd}<span class="dow">(${dow})</span>`;
+      if (isHolidayDay(r.date)) dateHtml += '<span class="lr-b hol">休</span>';
+      if (r.dtag) dateHtml += `<span class="lr-b tag">${escHtml(String(r.dtag))}</span>`;
+      const delBtn = `<button class="lr-btn del" onclick="deleteRecord(${r.id})" aria-label="削除">×</button>`;
 
       if (r.none) {
-        tr.innerHTML = `
-          <td>${dayLabel}</td>
-          <td colspan="2"><span style="color:var(--ok)">✓ 残業なし</span></td>
-          <td style="white-space:nowrap">
-            <button class="btn btn-sm btn-danger" onclick="deleteRecord(${r.id})">削除</button>
-          </td>
-        `;
+        tr.innerHTML = `<td colspan="4" class="lr-cell"><div class="lr">
+          <span class="lr-date">${dateHtml}</span>
+          <span class="lr-none">✓ 残業なし</span>
+          <span class="lr-memo"></span>
+          ${delBtn}
+        </div></td>`;
         logBody.appendChild(tr);
         return;
       }
 
-      let timeHtml = `<strong>${fmtMin(r.minutes)}</strong>`;
-      if (isServiceTag(r.dtag)) {
-        timeHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span><br><span style="color:var(--text-dim);font-size:10px">サービス残業</span>`;
-      } else if (isExcludedTag(r.dtag)) {
-        timeHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span><br><span style="color:var(--text-dim);font-size:10px">対象外</span>`;
-      } else {
+      // 時間: 残業に数えない記録は打ち消し線、差し引かれた記録は「元→後」
+      let minHtml, minCls = 'lr-min', why;
+      if (isServiceTag(r.dtag))       { minHtml = `<s>${fmtMin(r.minutes)}</s>`; minCls += ' off'; why = 'サービス残業（残業に含めない）'; }
+      else if (isExcludedTag(r.dtag)) { minHtml = `<s>${fmtMin(r.minutes)}</s>`; minCls += ' off'; why = '対象外（残業に含めない）'; }
+      else {
         const base  = wEff(r);
         const share = countedShare(r);
         if (share !== r.minutes) {
-          const why = [base < r.minutes ? '内(計上済)' : '', share < base ? '9/Y/S差引' : ''].filter(Boolean).join('・');
-          timeHtml = `<span style="color:var(--text-dim);text-decoration:line-through">${fmtMin(r.minutes)}</span> <strong>→ ${fmtMin(share)}</strong><br><span style="color:var(--text-dim);font-size:10px">${why}</span>`;
-        } else if (hol > 0 && !isAllHoliday) {
-          timeHtml += `<span class="hbadge">深夜 ${fmtMin(hol)}</span>`;
+          minHtml = `<s>${fmtMin(r.minutes)}</s>${fmtMin(share)}`;
+          why = [base < r.minutes ? '内(計上済)' : '', share < base ? '9/Y/S差引' : ''].filter(Boolean).join('・');
+        } else {
+          minHtml = fmtMin(r.minutes);
         }
-        if (r.dtag === 'W') timeHtml += `<br><span style="color:var(--text-dim);font-size:10px">S消化</span>`;
+        if (r.dtag === 'W') why = (why ? why + '・' : '') + 'S消化';
       }
+      const memo = r.memo ? escHtml(r.memo) : '';
 
-      const memoHtml = r.memo ? `<div class="memo-text" title="${escHtml(r.memo)}">📝 ${escHtml(r.memo)}</div>` : '';
-
-      tr.innerHTML = `
-        <td>${dayLabel}</td>
-        <td>${timeHtml}</td>
-        <td>
-          <span style="color:var(--text-dim)">${r.start} 〜 ${r.end}</span>
-          ${memoHtml}
-        </td>
-        <td style="white-space:nowrap">
-          <button class="btn btn-sm btn-edit" onclick="startEdit(${r.id})" style="margin-bottom:4px">編集</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteRecord(${r.id})">削除</button>
-        </td>
-      `;
+      tr.innerHTML = `<td colspan="4" class="lr-cell"><div class="lr">
+        <span class="lr-date">${dateHtml}</span>
+        <span class="lr-range">${r.start}-${r.end}</span>
+        <span class="lr-memo" title="${memo}">${memo}</span>
+        <span class="${minCls}"${why ? ` title="${why}"` : ''}>${minHtml}</span>
+        <button class="lr-btn" onclick="startEdit(${r.id})" aria-label="編集">✎</button>
+        ${delBtn}
+      </div></td>`;
       logBody.appendChild(tr);
     });
   });
@@ -1827,7 +1835,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v25 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v26 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
