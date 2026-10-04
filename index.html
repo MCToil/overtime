@@ -553,21 +553,6 @@
   <div class="week-detail" id="weekDetail"></div>
 </div>
 
-<!-- サービス残業（全期間の累計・締めでリセットしない） -->
-<div class="card">
-  <div class="card-title">サービス残業（累計・残り）</div>
-  <div class="svc-remain" id="svcRemain">0<span>h</span></div>
-  <div class="svc-sub" id="svcSub"></div>
-  <div class="progress-bar-wrap" style="margin-top:10px">
-    <div class="progress-bar" id="svcBar" style="width:0%;background:var(--ok)"></div>
-  </div>
-  <div class="svc-lines">
-    <div class="svc-line"><span>合計</span><span id="svcAllLine">累計 0h ・ 消化 0h</span></div>
-    <div class="svc-line"><span id="svcPeriodKey">この期間</span><span id="svcPeriodLine">累計 0h ・ 消化 0h</span></div>
-  </div>
-</div>
-
-
 <!-- Input -->
 <div class="card">
   <div class="card-title">残業を記録</div>
@@ -637,15 +622,20 @@
   </div>
 </div>
 
-<!-- Annual -->
+<!-- サービス残業（全期間の累計・締めでリセットしない） -->
 <div class="card">
-  <div class="card-title">年間集計 <span id="annualPeriodLabel" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim)"></span></div>
-  <div class="annual-header">
-    <div class="annual-total" id="annualTotal">0<span>h</span></div>
-    <div class="annual-sub" id="annualSub"></div>
+  <div class="card-title">サービス残業（累計・残り）</div>
+  <div class="svc-remain" id="svcRemain">0<span>h</span></div>
+  <div class="svc-sub" id="svcSub"></div>
+  <div class="progress-bar-wrap" style="margin-top:10px">
+    <div class="progress-bar" id="svcBar" style="width:0%;background:var(--ok)"></div>
   </div>
-  <div class="months-grid" id="monthsGrid"></div>
+  <div class="svc-lines">
+    <div class="svc-line"><span>合計</span><span id="svcAllLine">累計 0h ・ 消化 0h</span></div>
+    <div class="svc-line"><span id="svcPeriodKey">この期間</span><span id="svcPeriodLine">累計 0h ・ 消化 0h</span></div>
+  </div>
 </div>
+
 
 <!-- Log -->
 <div class="card">
@@ -660,7 +650,17 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v27</div>
+<!-- Annual -->
+<div class="card">
+  <div class="card-title">年間集計 <span id="annualPeriodLabel" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim)"></span></div>
+  <div class="annual-header">
+    <div class="annual-total" id="annualTotal">0<span>h</span></div>
+    <div class="annual-sub" id="annualSub"></div>
+  </div>
+  <div class="months-grid" id="monthsGrid"></div>
+</div>
+
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v28</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -1871,7 +1871,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v27 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v28 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
