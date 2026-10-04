@@ -634,7 +634,7 @@
   </div>
 </div>
 
-<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v24</div>
+<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:8px 0" id="versionFooter">v25</div>
 
 <div id="dtagHelpOverlay" onclick="this.style.display='none'">
   <div class="dtag-help-box" onclick="event.stopPropagation()">
@@ -1153,16 +1153,50 @@ function parseDirectTime(str) {
   if (!m) return null;
   const sh = parseInt(m[1]), sm = parseInt(m[2]);
   const eh = parseInt(m[3]), em = parseInt(m[4]);
-  if (sh>23||sm>59||eh>23||em>59) return null;
-  let diff = (eh*60+em) - (sh*60+sm);
+  // 24時以降の表記（2430 = 翌0:30）も受け付ける。記録はあくまで入力した日付に付く。
+  if (sh>47||sm>59||eh>47||em>59) return null;
+  const sAbs = sh*60 + sm;
+  let diff = (eh*60+em) - sAbs;
   if (m[5]) diff += 1440;
   if (diff <= 0) diff += 1440;
   if (diff <= 0 || diff > 720) return null;
-  return {
-    start: `${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}`,
-    end:   `${String(eh).padStart(2,'0')}:${String(em).padStart(2,'0')}`,
-    minutes: diff,
-  };
+  // 24時表記を使ったときは終了も24時表記で保存（例: 2430→2600 は 24:30〜26:00）
+  const extended = sh >= 24 || eh >= 24;
+  const eAbs = extended ? sAbs + diff : eh*60 + em;
+  if (eAbs >= 48*60) return null;
+  const hhmm = v => `${String(Math.floor(v/60)).padStart(2,'0')}:${String(v%60).padStart(2,'0')}`;
+  return { start: hhmm(sAbs), end: hhmm(eAbs), minutes: diff };
+}
+
+// ─── 重なりチェック（二重計上の防止） ───────────────────────────────────────
+// 実際の時刻（日付をまたいだ通算分）での区間
+function absInterval(r) {
+  const [y, mo, d] = r.date.split('-').map(Number);
+  const day = Math.round(Date.UTC(y, mo - 1, d) / 86400000);
+  const [a, b] = recInterval(r);
+  return [day * 1440 + a, day * 1440 + b];
+}
+function tagClass(t) { return isDeductedTag(t) ? 'D' : t === 'W' ? 'W' : 'N'; }
+
+// 登録しようとしている記録が、二重計上（または差引・内が効かない）になる重なりを持つか。
+//  ・同じ日付で同じ種類（通常どうし / Wどうし / 9・Y・Sどうし）が重なる → 二重計上
+//  ・日付が違う記録と実時刻で重なる（例: 10/2 の 2430 と 10/3 の 0030）
+//    → 差引・「内」は同じ日付どうしでしか計算しないので二重計上になりうる
+//  同じ日付で種類が違う重なり（通常と S/9/Y/W）は意図どおりなので対象外。
+function overlapWarning(cand, records) {
+  const ci = absInterval(cand);
+  const hits = records.filter(r =>
+    !r.none && r.start && r.end && r.id !== cand.id &&
+    overlapMin(ci, absInterval(r)) > 0 &&
+    (r.date !== cand.date || tagClass(r.dtag) === tagClass(cand.dtag)));
+  if (!hits.length) return '';
+  const cross = hits.some(r => r.date !== cand.date);
+  const lines = hits.map(r => `・${r.date.slice(5).replace('-','/')} ${r.start}〜${r.end}${r.dtag ? ` [${r.dtag}]` : ''}`);
+  return `この時間帯は次の記録と重なっています：\n${lines.join('\n')}\n\n` +
+    (cross
+      ? '日付が違う記録とは差引・「内」の計算が行われないため、二重に計上されるおそれがあります。\n24時以降は前日の日付で「2430」のように入力してください。\n\n'
+      : '同じ種類の記録どうしが重なると二重に計上されます。\n\n') +
+    'このまま登録しますか？';
 }
 
 // ─── Add ────────────────────────────────────────────────────────────────────
@@ -1173,7 +1207,10 @@ function addDirect() {
   const parsed = parseDirectTime(document.getElementById('directTime').value);
   const memo   = document.getElementById('directMemo').value.trim();
   if (!date)   { errEl.textContent = '日付を選択してください'; return; }
-  if (!parsed) { errEl.textContent = '形式が正しくありません（例: 18002000 または 1800-2000）'; return; }
+  if (!parsed) { errEl.textContent = '形式が正しくありません（例: 18002000、22002430）'; return; }
+  const warn = overlapWarning(
+    { id: editingId, date, start: parsed.start, end: parsed.end, dtag: selectedDtag }, load());
+  if (warn && !confirm(warn)) return;
   if (editingId !== null) {
     const { regular, holiday } = calcHolidayMinutes(date, parsed.start, parsed.end);
     const records = load();
@@ -1790,7 +1827,7 @@ renderTagSelect();
 renderStampLog();
 renderDtagRow();
 startClock();
-document.getElementById('versionFooter').textContent = `v24 ・ 保存件数: ${load().length}件`;
+document.getElementById('versionFooter').textContent = `v25 ・ 保存件数: ${load().length}件`;
 </script>
 </body>
 </html>
